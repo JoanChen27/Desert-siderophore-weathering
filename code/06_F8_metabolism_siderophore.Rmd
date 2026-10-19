@@ -1,0 +1,2116 @@
+---
+title: "Desert restoration project -- Part 6: F8 metabolism and siderophore mechanism"
+author: "Qiong_Chen"
+date: "2026-08-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+source("00_setup.R")
+```
+
+# 6. F8 metabolism and siderophore mechanism
+
+## 6.1 F8 metabolomic analysis
+
+```{r f8-metabolomics}
+
+
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(tidyr)
+  library(stringr)
+  library(limma)
+  library(pheatmap)
+})
+
+data <- read.delim('~/Desktop/replot/culture/isolation_culture_metabolite/meta_uniq/meta_uniq.txt',
+                   stringsAsFactors = FALSE, check.names = FALSE,
+                   header = TRUE, sep = "\t")
+
+meta_anno <- read.delim('~/Desktop/replot/culture/isolation_culture_metabolite/meta_uniq/metabolite-metadate.txt',
+                        stringsAsFactors = FALSE, check.names = FALSE,
+                        header = TRUE, sep = "\t")
+
+data <- data %>%
+  mutate(Label_low = tolower(Label),
+         Group = case_when(
+           Label_low == "qc" ~ "QC",
+           Label_low == "nc" ~ "NC",
+           Label_low == "wt" ~ "WT",
+           TRUE ~ "OTHER"
+         )) %>%
+  filter(Group %in% c("QC","NC","WT"))
+
+feat_cols <- setdiff(colnames(data), c("meta","Label","Label_low","Group"))
+feat_cols <- feat_cols[str_detect(feat_cols, "^(NEG|POS)\\d+")]
+X <- data %>% select(all_of(feat_cols)) %>% as.matrix()
+mode(X) <- "numeric"
+X[X == 0] <- NA
+
+is_qc <- data$Group == "QC"
+is_nc <- data$Group == "NC"
+is_wt <- data$Group == "WT"
+
+#  pre-filter by missingness in QC
+qc_miss <- colMeans(is.na(X[is_qc, , drop = FALSE]))
+keep1 <- qc_miss <= 0.50
+X <- X[, keep1, drop = FALSE]
+
+#  impute missing: half-min per feature
+half_min_impute <- function(v){
+  if (all(is.na(v))) return(v)
+  mn <- min(v, na.rm = TRUE)
+  v[is.na(v)] <- mn / 2
+  v
+}
+X_imp <- apply(X, 2, half_min_impute)
+
+#  QC reference vector: feature-wise median in QC
+qc_ref <- apply(X_imp[is_qc, , drop = FALSE], 2, median)
+
+#  PQN scaling factor per sample: median of ratios to QC reference
+# (avoid division by 0)
+qc_ref2 <- ifelse(qc_ref <= 0, NA_real_, qc_ref)
+
+ratio_mat <- sweep(X_imp, 2, qc_ref2, "/")
+# scaling factor = median ratio across features
+sf <- apply(ratio_mat, 1, function(r) median(r, na.rm = TRUE))
+
+# normalize
+X_norm <- sweep(X_imp, 1, sf, "/")
+
+#  log2 transform
+logX <- log2(X_norm + 1)
+
+# QC RSD filter after normalization (use CV on original scale OR SD on log scale)
+qc_sd <- apply(logX[is_qc, , drop = FALSE], 2, sd)
+qc_mean <- colMeans(logX[is_qc, , drop = FALSE])
+qc_rsd <- qc_sd / abs(qc_mean + 1e-8)
+
+keep2 <- qc_rsd <= 0.30
+logX <- logX[, keep2, drop = FALSE]
+message("Features kept after QC filters: ", ncol(logX))
+
+# differential analysis: limma WT vs NC 
+
+keep_samples <- data$Group %in% c("NC", "WT")
+grp <- factor(data$Group[keep_samples], levels = c("NC", "WT"))
+
+# logX: samples x features（前面 QC-PQN 后得到的 log2 矩阵）
+# limma 需要：features x samples
+expr <- t(logX[keep_samples, , drop = FALSE])
+expr <- as.matrix(expr)
+
+design <- model.matrix(~ 0 + grp)
+colnames(design) <- levels(grp)
+design <- as.matrix(design)
+
+fit <- lmFit(expr, design)  # 注意：不要写 fit$coefficients 之类
+
+cont <- makeContrasts(WTvsNC = WT - NC, levels = design)
+
+fit2 <- contrasts.fit(fit, cont)
+fit2 <- eBayes(fit2)
+
+tt <- topTable(fit2, coef = "WTvsNC", number = Inf, sort.by = "P")
+
+
+library(dplyr)
+library(tibble)
+
+tt_fix <- tt %>%
+  tibble::rownames_to_column("Feature") %>%   # 把 POS9093 之类变成 Feature 列
+  rename(
+    log2FC = logFC,
+    pvalue = P.Value,
+    padj   = adj.P.Val
+  )
+
+ann <- meta_anno %>%
+  transmute(
+    Feature = Label,
+    Superclass = ifelse(is.na(Superclass) | Superclass == "" | Superclass == "NA",
+                        "Unclassified", Superclass)
+  ) %>%
+  distinct()
+
+
+tt2 <- tt_fix %>%
+  left_join(ann, by = "Feature") %>%
+  mutate(
+    Superclass = ifelse(is.na(Superclass), "Unclassified", Superclass),
+    direction = ifelse(log2FC > 0, "Enriched in WT", "Enriched in NC")
+  )
+
+
+write.table(tt2,
+            file = "~/Desktop/replot/culture/isolation_culture_metabolite/meta_uniq/wt_vs_nc_limma_QCPQN.tsv",
+            sep = "\t", row.names = FALSE, quote = FALSE)
+
+sig <- tt2 %>% filter(padj < 0.05, abs(log2FC) >= 1)
+message("Significant metabolites: ", nrow(sig))
+
+#  heatmap 
+if (nrow(sig) >= 2) {
+  feat_sig <- sig$Feature
+  mat <- t(logX[keep_samples, feat_sig, drop = FALSE])  # features x samples
+  colnames(mat) <- data$meta[keep_samples]
+  
+  mat_z <- t(scale(t(mat)))
+  mat_z[is.na(mat_z)] <- 0
+  
+  col_anno <- data.frame(Group = grp)
+  rownames(col_anno) <- colnames(mat_z)
+  
+  row_anno <- sig %>%
+    select(Feature, Superclass, direction) %>%
+    distinct() %>%
+    tibble::column_to_rownames("Feature")
+  
+  ord <- rownames(row_anno)[order(row_anno$Superclass, row_anno$direction)]
+  mat_z <- mat_z[ord, , drop = FALSE]
+  row_anno <- row_anno[ord, , drop = FALSE]
+  
+  pheatmap(mat_z,
+           annotation_col = col_anno,
+           annotation_row = row_anno,
+           show_colnames = FALSE,
+           fontsize_row = 6,
+           border_color = NA,
+           clustering_method = "ward.D2",
+           main = "WT vs NC | QC-PQN normalized | limma (FDR<0.05, |log2FC|>=1)")
+} else {
+  message("Too few significant features for a heatmap under current thresholds.")
+}
+
+
+acid_superclass <- c(
+  "Organic acids and derivatives",
+  "Carboxylic acids and derivatives",
+  "Hydroxy acids and derivatives",
+  "Keto acids and derivatives"
+)
+
+sig_wt_acid <- sig %>%
+  filter(direction == "Enriched in WT") %>%
+  filter(Superclass %in% acid_superclass)
+
+message("WT-enriched acid-related metabolites: ", nrow(sig_wt_acid))
+
+
+
+
+ann_colors <- list(
+  Group = c(
+    "NC" = "#E64B35",  
+    "WT" = "#3C5488"   
+  ),
+  Superclass = c(
+    "Carboxylic acids and derivatives" = "#E69F00",  
+    "Hydroxy acids and derivatives"    = "#56B4E9",  
+    "Keto acids and derivatives"       = "#CC79A7",  
+    "Organic acids and derivatives"    = "#009E73"   
+  )
+)
+
+
+if (nrow(sig_wt_acid) >= 2) {
+  feat_sig <- sig_wt_acid$Feature
+  
+  mat <- t(logX[keep_samples, feat_sig, drop = FALSE])
+  colnames(mat) <- data$meta[keep_samples]
+  
+  mat_z <- t(scale(t(mat))); mat_z[is.na(mat_z)] <- 0
+  
+  col_anno <- data.frame(Group = grp)
+  rownames(col_anno) <- colnames(mat_z)
+  
+  row_anno <- sig_wt_acid %>%
+    select(Feature, Superclass) %>%
+    distinct() %>%
+    tibble::column_to_rownames("Feature")
+  
+  ord <- rownames(row_anno)[order(row_anno$Superclass)]
+  mat_z <- mat_z[ord, , drop = FALSE]
+  row_anno <- row_anno[ord, , drop = FALSE]
+  
+  pheatmap(
+    mat_z,
+    annotation_col = col_anno,
+    annotation_row = row_anno,
+    annotation_colors = ann_colors,
+    show_colnames = FALSE,
+    fontsize_row = 7,
+    border_color = NA,
+    clustering_method = "ward.D2",
+    treeheight_col = 0,   # 关掉顶部树状图
+    treeheight_row = 0,   # 关掉左侧树状图
+    main = "WT vs NC | WT-enriched acid-related metabolites | QC-PQN + limma",
+     filename = "~/Desktop/replot/culture/isolation_culture_metabolite/meta_uniq/wt_vs_nc_wt_enriched_acid_heatmap.pdf",
+     width = 12, height = 8
+  )
+}
+
+
+library(dplyr)
+library(ggplot2)
+
+comp <- sig %>%
+  filter(direction == "Enriched in WT") %>%
+  count(Superclass, sort = TRUE) %>%
+  mutate(prop = n / sum(n))
+
+# 关心的酸相关占比（可直接写进文中）
+acid_n <- comp %>% filter(Superclass %in% acid_superclass) %>% summarise(n = sum(n)) %>% pull(n)
+total_n <- sum(comp$n)
+message("Acid-related in WT-enriched: ", acid_n, "/", total_n, " = ", round(100*acid_n/total_n, 1), "%")
+
+# 作图：只画前 12 类，其他合并为 Others（避免 legend 爆炸）
+topN <- 12
+comp2 <- comp %>%
+  mutate(Superclass2 = ifelse(row_number() <= topN, Superclass, "Others")) %>%
+  group_by(Superclass2) %>%
+  summarise(n = sum(n), prop = sum(prop)) %>%
+  ungroup() %>%
+  arrange(desc(n))
+
+graphics.off()
+
+ggplot(comp2, aes(x = reorder(Superclass2, n), y = n)) +
+  geom_col() +
+  coord_flip() +
+  labs(x = NULL, y = "Count",
+       title = "WT-enriched differential metabolites by Superclass",
+       subtitle = "QC-PQN normalized | limma | FDR<0.05, |log2FC|>=1")
+
+sig_wt_acid %>%
+  mutate(meta_text = paste(Superclass, Class, Subclass, sep=" | ")) %>%
+  filter(str_detect(tolower(meta_text), "dicarbox|tricarbox")) %>%
+  select(Feature, Superclass, Class, Subclass, log2FC, padj) %>%
+  arrange(padj) %>%
+  head(30)
+
+
+
+
+library(dplyr)
+library(ggplot2)
+library(scales)
+
+# sig_wt_acid：画热图时用的那个数据框（含 Feature, Superclass）
+comp4 <- sig_wt_acid %>%
+  count(Superclass, name = "n") %>%
+  mutate(prop = n / sum(n)) %>%
+  # 固定显示顺序（legend 顺序也跟着走）
+  mutate(Superclass = factor(
+    Superclass,
+    levels = c(
+      "Carboxylic acids and derivatives",
+      "Hydroxy acids and derivatives",
+      "Keto acids and derivatives",
+      "Organic acids and derivatives"
+    )
+  ))
+
+pal4 <- c(
+  "Carboxylic acids and derivatives" = "#E69F00",
+  "Hydroxy acids and derivatives"    = "#56B4E9",
+  "Keto acids and derivatives"       = "#CC79A7",
+  "Organic acids and derivatives"    = "#009E73"
+)
+
+#  proportion stacked bar (single bar) 
+ggplot(comp4, aes(x = "", y = prop, fill = Superclass)) +
+  geom_col(width = 0.6, color = "white", linewidth = 0.3) +
+  coord_flip() +
+  scale_fill_manual(values = pal4, drop = FALSE) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  labs(x = NULL, y = "Proportion",
+       title = "WT-enriched acid-related metabolites (heatmap set)",
+       subtitle = "Superclass composition") +
+  theme_classic() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+head(comp4)
+
+
+ggsave(filename = '~/Desktop/replot/culture/isolation_culture_metabolite/meta_uniq/wt.enriched.acids.pdf', width = 10, height = 6)
+
+
+data <- read.delim('~/Desktop/replot/culture/isolation_culture_metabolite/meta_uniq/meta_uniq.txt',
+                   stringsAsFactors = FALSE, check.names = FALSE,
+                   header = TRUE, sep = "\t")
+
+
+library(dplyr)
+library(ggplot2)
+
+malic_ids <- c("NEG5317", "NEG5324")
+
+df_malic <- data %>%
+  filter(tolower(Label) %in% c("nc", "wt")) %>%
+  mutate(Group = ifelse(tolower(Label) == "wt", "WT", "NC")) %>%
+  select(meta, Group, all_of(malic_ids)) %>%
+  mutate(across(all_of(malic_ids), as.numeric))
+
+# 合并策略（推荐）：先 log10(x+1)，再取均值（几何均值更稳）
+df_malic <- df_malic %>%
+  mutate(
+    malic_combined = rowMeans(log10(across(all_of(malic_ids)) + 1), na.rm = TRUE)
+  )
+
+# 统计：Wilcoxon
+pval <- wilcox.test(malic_combined ~ Group, data = df_malic, exact = FALSE)$p.value
+p_label <- paste0("Wilcoxon p = ", signif(pval, 3))
+
+# 配色
+grp_cols <- c("NC" = "#E64B35", "WT" = "#3C5488")
+
+ggplot(df_malic, aes(x = Group, y = malic_combined, fill = Group)) +
+  geom_boxplot(outlier.shape = NA, width = 0.55, alpha = 0.85) +
+  geom_jitter(aes(color = Group), width = 0.12, size = 2, alpha = 0.9) +
+  scale_fill_manual(values = grp_cols) +
+  scale_color_manual(values = grp_cols) +
+  labs(
+    x = NULL,
+    y = "log10(normalized intensity + 1)",
+   # title = "Malic acid (NEG5317 + NEG5324 combined): NC vs WT",
+    #subtitle = p_label
+  ) +
+  theme_classic(base_size = 16) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = ggtext::element_markdown(color = "black"),
+    axis.ticks.y = element_blank(),
+    strip.background = element_blank(),
+    strip.text.y = element_text(angle = 0, face = "bold"),
+    panel.spacing = unit(0.6, "lines"),
+    legend.position = "none"
+  )
+
+ggsave(filename = '~/Desktop/replot/culture/isolation_culture_metabolite/meta_uniq/malic acid.enriched.acids.pdf', width = 3, height = 3)
+
+
+```
+
+
+## 6.2 DFOE identification and quantification
+
+```{r dfoe-identification}
+  library(ggplot2)    
+  library(dplyr)      
+  library(scales)
+  
+  sp_file <- read.delim('~/Desktop/replot/culture/siderophore-experi/data/ms-data/SP.txt',
+                       stringsAsFactors = FALSE, check.names = FALSE,
+                       header = T, sep = "\t")
+  std_file <- read.delim('~/Desktop/replot/culture/siderophore-experi/data/ms-data/STD.txt',
+                       stringsAsFactors = FALSE, check.names = FALSE,
+                       header = T, sep = "\t")
+  
+  
+  sp_data <- data.frame(
+    Time = sp_file[[1]],  # First column (Time)
+    Intensity = sp_file[[2]],  # Second column (Intensity)
+    Source = "SP"
+  )
+  
+  std_data <- data.frame(
+    Time = std_file[[1]],  # First column (Time)
+    Intensity = std_file[[2]],  # Second column (Intensity)
+    Source = "STD"
+  )
+  
+  
+  
+  # Combine data for plotting
+  combined_data <- rbind(std_data, sp_data)
+  
+  # Create the plot
+   ggplot() +
+    # Add lines for each dataset
+    geom_line(data = subset(combined_data, Source == "STD"), 
+              aes(x = Time, y = Intensity, color = "STD"), 
+              size = 1) +
+    geom_line(data = subset(combined_data, Source == "SP"), 
+              aes(x = Time, y = Intensity, color = "SP"), 
+              size = 1) +
+    
+    # Set colors to match the original plot (pink for STD, blue for SP)
+    scale_color_manual(values = c("SP" = "#17B6BB", "STD" = "#F56B65")) +
+    
+    # Add proper labels
+    labs(title = "",
+         x = "Time (min)",
+         y = "Intensity (cps)",
+         color = "Source") +
+    
+    # Fine-tune the appearance
+     theme_bw(base_size = 16) +
+     theme(
+       legend.position = "none",
+       panel.grid.minor = element_blank(),
+       axis.text.x = element_text(size = 16, colour = 'black'),
+       axis.text.y = element_text(size = 16,colour = 'black'),
+       axis.title = element_text(size = 16,  colour = 'black')
+       )+
+     
+    # Format y-axis to scientific notation like in the original
+    scale_y_continuous(labels = scales::scientific_format(digits = 1))+
+     scale_x_continuous(
+       limits = c(0, 6),
+       breaks = seq(0, 6, by = 2.5), 
+       expand = c(0, 0)
+     )
+   
+   ggsave(filename = "~/Desktop/replot/culture/siderophore-experi/data/time-intensity.pdf", width = 5,height = 4)
+   
+
+
+   # ms plot #
+   sp_file <- read.delim('~/Desktop/replot/culture/siderophore-experi/data/ms-data/SP_MS.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,
+                         header = T, sep = "\t")
+   std_file <- read.delim('~/Desktop/replot/culture/siderophore-experi/data/ms-data/STD_MS.txt',
+                          stringsAsFactors = FALSE, check.names = FALSE,
+                          header = T, sep = "\t")
+   
+   
+   sp_data <- data.frame(
+     MC = sp_file[[1]],  # First column (Time)
+     Intensity = sp_file[[2]],  # Second column (Intensity)
+     Source = "SP"
+   )
+   
+   std_data <- data.frame(
+     MC = std_file[[1]],  # First column (Time)
+     Intensity = std_file[[2]],  # Second column (Intensity)
+     Source = "STD"
+   )
+   
+   
+   
+   # Combine data for plotting
+   combined_data <- rbind(std_data, sp_data)
+   
+   # Create the plot
+   ggplot() +
+     # Add lines for each dataset
+     geom_line(data = subset(combined_data, Source == "STD"), 
+               aes(x = MC, y = Intensity, color = "STD"), 
+               size = 1) +
+     geom_line(data = subset(combined_data, Source == "SP"), 
+               aes(x = MC, y = Intensity, color = "SP"), 
+               size = 1) +
+     
+     # Set colors to match the original plot (pink for STD, blue for SP)
+     scale_color_manual(values = c("SP" = "#17B6BB", "STD" = "#F56B65")) +
+     
+     # Add proper labels
+     labs(title = "",
+          x = "(m/z)",
+          y = "Intensity (cps)",
+          color = "Source") +
+     
+     # Fine-tune the appearance
+     theme_bw(base_size = 16) +
+     theme(
+       legend.position = "none",
+       panel.grid.minor = element_blank(),
+       axis.text.x = element_text(size = 16, colour = 'black'),
+       axis.text.y = element_text(size = 16,colour = 'black'),
+       axis.title = element_text(size = 16,  colour = 'black'),
+       panel.border = element_rect(color = "black", fill = NA),
+       panel.spacing = unit(0, "lines")
+     )+
+     
+     # Format y-axis to scientific notation like in the original
+     scale_y_continuous(labels = scales::scientific_format(digits = 1)) +                       
+     scale_x_continuous(
+      limits = c(0, 1300),
+       breaks = seq(0, 1300, by = 200),
+      expand = c(0, 0)
+     ) 
+     
+   
+   ggsave(filename = "~/Desktop/replot/culture/siderophore-experi/data/mz-intensity.pdf", width = 5,height = 4)
+   
+   # MS MS data
+   sp_file <- read.delim('~/Desktop/replot/culture/siderophore-experi/data/ms-data/SP_MSMS.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,
+                         header = T, sep = "\t")
+   std_file <- read.delim('~/Desktop/replot/culture/siderophore-experi/data/ms-data/STD_MSMS.txt',
+                          stringsAsFactors = FALSE, check.names = FALSE,
+                          header = T, sep = "\t")
+   
+   
+   sp_data <- data.frame(
+     MC = sp_file[[1]],  # First column (Time)
+     Intensity = sp_file[[2]],  # Second column (Intensity)
+     Source = "SP"
+   )
+   
+   ggplot() +
+     # Add lines for each dataset
+     geom_line(data = sp_data, 
+               aes(x = MC, y = Intensity),
+               color = "#17B6BB", 
+               size = 1) +
+    
+     # Add proper labels
+     labs(title = "",
+          x = "m/z",
+          y = "Intensity, cps"
+          ) +
+     
+     # Fine-tune the appearance
+     theme_bw(base_size = 16) +
+     theme(
+       legend.position = "none",
+       panel.grid.minor = element_blank(),
+       axis.text.x = element_text(size = 16, colour = 'black'),
+       axis.text.y = element_text(size = 16,colour = 'black'),
+       axis.title = element_text(size = 16,  colour = 'black'),
+       panel.border = element_rect(color = "black", fill = NA),
+       panel.spacing = unit(0, "lines"),
+       plot.margin = margin(t = 5, r = 5, b = 5, l = 5, unit = "pt")
+     )+
+     
+     # Use coord_cartesian for precise control
+     coord_cartesian(
+       xlim = c(0, 850),
+       ylim = c(0, NA),  # Auto-calculate upper limit
+       expand = FALSE,   # No expansion
+       clip = "on"       # Standard clipping
+     ) +
+     
+     # Format scales separately
+     scale_y_continuous(
+       labels = scales::scientific_format(digits = 1),
+       # This is the key fix - create a very small but non-zero bottom margin
+       # without affecting axis positioning
+       oob = scales::oob_keep,
+       n.breaks = 5, expand = c(0,0)
+     ) +                       
+     scale_x_continuous(
+       breaks = seq(0, 850, by = 150)
+     )
+   
+   ggsave(filename = "~/Desktop/replot/culture/siderophore-experi/data/sp-msms-intensity.pdf", width = 7,height = 5) 
+   
+   
+   
+   
+   sd_data <- data.frame(
+     MC = std_file[[1]],  # First column (Time)
+     Intensity = std_file[[2]],  # Second column (Intensity)
+     Source = "SP"
+   )
+   
+   ggplot() +
+     # Add lines for each dataset
+     geom_line(data = sd_data, 
+               aes(x = MC, y = Intensity),
+               color = "#F56B65", 
+               size = 1) +
+     
+     # Add proper labels
+     labs(title = "",
+          x = "m/z",
+          y = "Intensity, cps"
+     ) +
+     
+     # Fine-tune the appearance
+     theme_bw(base_size = 16) +
+     theme(
+       legend.position = "none",
+       panel.grid.minor = element_blank(),
+       axis.text.x = element_text(size = 16, colour = 'black'),
+       axis.text.y = element_text(size = 16,colour = 'black'),
+       axis.title = element_text(size = 16,  colour = 'black'),
+       panel.border = element_rect(color = "black", fill = NA),
+       panel.spacing = unit(0, "lines"),
+       plot.margin = margin(t = 5, r = 5, b = 5, l = 5, unit = "pt")
+     )+
+     
+     # Use coord_cartesian for precise control
+     coord_cartesian(
+       xlim = c(0, 850),
+       ylim = c(0, NA),  # Auto-calculate upper limit
+       expand = FALSE,   # No expansion
+       clip = "on"       # Standard clipping
+     ) +
+     
+     # Format scales separately
+     scale_y_continuous(
+       labels = scales::scientific_format(digits = 1),
+       # This is the key fix - create a very small but non-zero bottom margin
+       # without affecting axis positioning
+       oob = scales::oob_keep,
+       n.breaks = 5, expand = c(0,0)
+     ) +                       
+     scale_x_continuous(
+       breaks = seq(0, 850, by = 150)
+     )
+   
+   ggsave(filename = "~/Desktop/replot/culture/siderophore-experi/data/sd-msms-intensity.pdf", width = 7,height = 5) 
+```
+
+## 6.4 bibC mutant and overexpression strains
+
+```{r bibc-genetic-validation}
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(stringr)
+
+df <- read.delim('~/Desktop/replot/culture/field-experiment/data-plot/culture-4-DFOE.txt',
+                 stringsAsFactors = FALSE, check.names = FALSE,
+                 header = T, sep = "\t")
+
+df <- df %>%
+  mutate(
+    type  = str_trim(as.character(type)),
+    group = str_trim(as.character(group)),
+    value = as.numeric(value)
+  ) %>%
+  # 把各种“非标准横线”统一成 "-"
+  mutate(group = str_replace_all(group, "[\u2010\u2011\u2012\u2013\u2014\u2212]", "-")) %>%
+  # 统一 type 名字
+  mutate(type = recode(type,
+                       "no added Fe" = "no added Fe",
+                       "5 uM Fe"     = "5 uM Fe",
+                       "5uM Fe"      = "5 uM Fe")) %>%
+  # 如果你文件里原来是 _purT，就替换成 ΔpurT；如果已经是 ΔpurT 不会受影响
+  mutate(group = recode(group, "_purT" = "ΔpurT"))
+
+# 检查一下是不是四组都在（很重要）
+print(unique(df$group))
+print(unique(df$type))
+
+# baseline: WT under no added Fe 
+baseline <- df %>%
+  filter(type == "no added Fe", group == "WT") %>%
+  summarise(base = mean(value, na.rm = TRUE)) %>%
+  pull(base)
+
+stopifnot(!is.na(baseline), baseline > 0)
+
+df2 <- df %>% mutate(value_rel = value / baseline)
+
+sum_df <- df2 %>%
+  group_by(type, group) %>%
+  summarise(mean = mean(value_rel), sd = sd(value_rel), n = n(), .groups = "drop") %>%
+  mutate(
+    type  = factor(type,  levels = c("no added Fe", "5 uM Fe")),
+    group = factor(group, levels = c("ΔpurT", "WT", "OE-purT", "Comp"))
+  )
+
+# 如果这里还有 NA，说明 group 名字没对上（比如 OE-purT 实际叫 OE-purT.1 或有空格）
+stopifnot(!any(is.na(sum_df$group)))
+
+
+
+library(dplyr)
+library(ggplot2)
+
+col_dark <- c(
+  "WT"      = "#5AAE61",
+  "OE-purT" = "#4A90C2",
+  "ΔpurT"   = "#E3A400",
+  "Comp"    = "#8A63B8"
+)
+col_light <- c(
+  "WT"      = "#CFECD1",
+  "OE-purT" = "#CFE6F6",
+  "ΔpurT"   = "#F7E4A6",
+  "Comp"    = "#E3D6F5"
+)
+
+
+col_dark <- c(
+  "WT"      = "#7FA35A",
+  "OE-purT" = "#4F8FB3",
+  "ΔpurT"   = "#B58900",
+  "Comp"    = "#8A63B8"
+)
+col_light <- c(
+  "WT"      = "#6B8E23",
+  "OE-purT" = "#6FA8C9",
+  "ΔpurT"   = "#C9A227",
+  "Comp"    = "#E3D6F5"
+)
+
+
+box_colors <- c(
+  "NC" = "#6E6E6E",
+  "KO" = "#C9A227",
+  "WT" = "#7FA35A",
+  "OS" = "#6FA8C9"
+)
+
+line_colors <- c(
+  "NC" = "#4A4A4A",
+  "KO" = "#B58900",
+  "WT" = "#6B8E23",
+  "OS" = "#4F8FB3"
+)
+
+sum_df <- sum_df %>%
+  mutate(
+    group = factor(group, levels = c("WT", "ΔpurT", "Comp","OE-purT")),
+    type  = factor(type,  levels = c("no added Fe", "5 uM Fe")),
+    # ✅ 关键：给每一行算出真实要填充的颜色
+    fill_col = ifelse(type == "no added Fe", "white", col_light[as.character(group)])
+  )
+
+dodge_w <- 0.72
+
+ ggplot(sum_df, aes(x = group, y = mean, group = type)) +
+  geom_col(
+    aes(fill = fill_col, color = group),
+    position = position_dodge(width = dodge_w),
+    width = 0.62,
+    linewidth = 0.75
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - sd, ymax = mean + sd),
+    position = position_dodge(width = dodge_w),
+    width = 0.16,
+    linewidth = 0.6
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed", linewidth = 0.8) +
+  scale_color_manual(values = col_dark, guide = "none") +
+  scale_fill_identity() + ylim(0,6)+ 
+  labs(x = NULL, y = "Relative DFOE per OD600 (normalized to WT, no added Fe)") +
+  theme_classic(base_size = 16) +
+   theme(axis.text.x = element_text(size = 16, colour = 'black')) +
+   theme(axis.text.y = element_text(size = 16, colour = 'black')) +
+   theme(
+     panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),text = element_text(family = "Arial"),
+     axis.line = element_blank()   # 关掉左/下轴线，避免和外框叠加导致粗细不一致
+   )
+
+
+
+ggsave(filename = "~/Desktop/replot/culture/field-experiment/data-plot/4-strains-dfoe-u.pdf", width = 5,height = 3)
+
+
+
+ ggplot(sum_df, aes(x = group, y = mean, fill = type)) +
+  geom_col(position = position_dodge(width = 0.75), width = 0.65, color = "black") +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd),
+                position = position_dodge(width = 0.75), width = 0.18, linewidth = 0.6) +
+  geom_hline(yintercept = 1, linetype = "dashed", linewidth = 0.6) +
+  scale_fill_manual(values = c("no added Fe" = "white", "5 uM Fe" = "black")) +
+  labs(x = NULL, y = "Relative DFOE per OD600 (normalized to WT, no added Fe)", fill = NULL) +
+  theme_classic(base_size = 13) +
+  theme(legend.position = "top")
+ 
+ 
+# two-way ANOVA + post-hoc
+ 
+ library(dplyr)
+ library(stringr)
+ library(emmeans)
+ 
+ #  Two-way ANOVA（含交互）
+ fit <- lm(value_rel ~ group * type, data = df2)
+ anova_tab <- anova(fit)
+ anova_tab
+ 
+ # （可选）检查残差正态性/方差齐性，n=3 仅作参考
+ # par(mfrow=c(1,2)); plot(fit, which=1); plot(fit, which=2); par(mfrow=c(1,1))
+ 
+ # Post-hoc A：每个Fe条件内，菌株之间比较 
+ emm_group_within_type <- emmeans(fit, ~ group | type)
+ emm_group_within_type 
+ 
+ # 常用：Tukey（同一type内所有组两两比较）
+ pairs_group_Tukey <- pairs(emm_group_within_type, adjust = "tukey")
+ pairs_group_Tukey
+ 
+ # 或者想更“宽松/通用”：BH (FDR)
+ pairs_group_BH <- pairs(emm_group_within_type, adjust = "BH")
+ pairs_group_BH
+ 
+ # Post-hoc B：每个菌株内，加铁 vs 不加铁 
+ emm_type_within_group <- emmeans(fit, ~ type | group)
+ 
+ pairs_type_BH <- pairs(emm_type_within_group, adjust = "BH")
+ pairs_type_BH
+
+ 
+ # 所有的一起看事后比较
+ 
+ library(emmeans)
+ library(dplyr)
+ 
+ # fit <- lm(value_rel ~ group * type, data = df2)
+ 
+ # 1) 得到 8 个 cell mean：group:type
+ emm_all <- emmeans(fit, ~ group * type)
+ 
+ # 2) 全部两两比较（8 组 -> 28 个对比）
+ # 选一个校正方法：
+ # - "tukey"：最经典的全对全（强烈推荐）
+ # - "BH"：FDR，也可以
+ all_pairs_tukey <- pairs(emm_all, adjust = "tukey")
+ all_pairs_bh    <- pairs(emm_all, adjust = "BH")
+ 
+ # 打印（看全部）
+ all_pairs_tukey
+ # all_pairs_bh
+ 
+ # 3) 只看显著的（比如 Tukey 校正后 p < 0.05）
+ sig_tukey <- as.data.frame(all_pairs_tukey) %>%
+   filter(p.value < 0.05) %>%
+   arrange(p.value)
+ 
+ sig_tukey
+ 
+ # 4) 导出全表 + 显著表（写补充材料最方便）
+ write.csv(as.data.frame(all_pairs_tukey), "posthoc_allpairs_groupXtype_Tukey.csv", row.names = FALSE)
+ write.csv(sig_tukey, "posthoc_allpairs_groupXtype_Tukey_sigOnly.csv", row.names = FALSE)
+ 
+ # 5)（可选）把 8 组做字母分组（compact letter display）
+ # install.packages("multcompView")  # 若没装
+ cld_all <- cld(emm_all, adjust = "tukey", Letters = letters)
+ cld_all
+ write.csv(as.data.frame(cld_all), "CLD_groupXtype_Tukey.csv", row.names = FALSE)
+```
+
+## 6.5 Environmental tolerance and siderophore production
+
+```{r f8-environmental-response}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(lme4)
+library(lmerTest)
+
+
+## 通用函数：整理数据 + mixed model + 作图
+
+run_growth_plot <- function(file_path,
+                            cond_levels,
+                            cond_name,
+                            cond_label,
+                            color_map,
+                            out_pdf,
+                            y_max = 2.4) {
+  
+  ## 1. read data
+  mydata <- read.delim(
+    file_path,
+    stringsAsFactors = FALSE,
+    check.names = FALSE,
+    header = TRUE,
+    sep = "\t"
+  )
+  
+  ## 2. long format
+  dat_long <- mydata %>%
+    pivot_longer(
+      cols = all_of(cond_levels),
+      names_to = cond_name,
+      values_to = "OD600"
+    ) %>%
+    mutate(
+      !!cond_name := factor(.data[[cond_name]], levels = cond_levels),
+      id = factor(id),
+      hour = as.numeric(hour)
+    )
+  
+  ## 3. summary for plotting
+  dat_sum <- dat_long %>%
+    group_by(hour, .data[[cond_name]]) %>%
+    summarise(
+      mean_OD = mean(OD600, na.rm = TRUE),
+      sd_OD = sd(OD600, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  ## 4. mixed model
+  ## hour 作为 factor 更稳，不强加线性假设
+  form <- as.formula(paste0("OD600 ~ factor(hour) * ", cond_name, " + (1|id)"))
+  fit <- lmer(form, data = dat_long)
+  
+  anova_tab <- anova(fit)
+  print(anova_tab)
+  
+  ## 提取 p 值
+  p_time <- anova_tab["factor(hour)", "Pr(>F)"]
+  p_cond <- anova_tab[cond_name, "Pr(>F)"]
+  p_int  <- anova_tab[paste0("factor(hour):", cond_name), "Pr(>F)"]
+  
+  fmt_p <- function(p) {
+    if (is.na(p)) return("NA")
+    if (p < 0.001) return("< 0.001")
+    sprintf("= %.3f", p)
+  }
+  
+  stat_lab <- paste0(
+    "Mixed model\n",
+    "Time P ", fmt_p(p_time), "\n",
+    cond_label, " P ", fmt_p(p_cond), "\n",
+    "Interaction P ", fmt_p(p_int)
+  )
+  
+  ## 5. 作图
+  y_top <- max(dat_sum$mean_OD + dat_sum$sd_OD, na.rm = TRUE) * 1.01
+  
+  p <- ggplot(dat_sum, aes(x = hour, y = mean_OD, color = .data[[cond_name]], group = .data[[cond_name]])) +
+    geom_line(linewidth = 1) +
+    geom_point(size = 1.5) +
+    geom_errorbar(
+      aes(ymin = mean_OD - sd_OD, ymax = mean_OD + sd_OD),
+      width = 0.45,
+      linewidth = 0.45
+    ) +
+    # annotate(
+    #   "label",
+    #   x = min(dat_sum$hour) + 0.05 * diff(range(dat_sum$hour)),
+    #   y = y_max * 0.98,
+    #   label = stat_lab,
+    #   hjust = 0,
+    #   vjust = 1,
+    #   size = 4.1,
+    #   label.size = 0.3,
+    #   fill = "white"
+    # ) +
+    scale_color_manual(values = color_map, drop = FALSE) +
+    scale_x_continuous(breaks = sort(unique(dat_sum$hour))) +
+    coord_cartesian(ylim = c(0, y_top)) +
+    labs(
+      x = "Time (h)",
+      y = expression(OD[600]),
+      color = cond_label
+    ) +
+    theme_classic(base_size = 16) +
+    theme(
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
+      axis.line = element_blank(),
+      axis.ticks = element_line(linewidth = 0.6),
+      legend.position = "bottom",
+      legend.title = element_text(size = 16),
+      legend.text = element_text(size = 16)
+    )
+  
+  print(p)
+  ggsave(out_pdf, p, width = 6.3, height = 4.8)
+  
+  ## 6. 导出统计表
+  out_stat <- data.frame(
+    term = c("Time", cond_label, "Interaction"),
+    p_value = c(p_time, p_cond, p_int)
+  )
+  
+  stat_file <- sub("\\.pdf$", "_mixed_model_stats.csv", out_pdf)
+  write.csv(out_stat, stat_file, row.names = FALSE)
+  
+  invisible(list(
+    raw = mydata,
+    long = dat_long,
+    sum = dat_sum,
+    fit = fit,
+    anova = anova_tab,
+    plot = p
+  ))
+}
+
+
+## 1. pH
+
+ph_cols <- c(
+  "6"  = "#C2A035",
+  "7" = "#5F745C",
+  "8"  = "#4D7071",
+  "9"  = "#395F80",
+  "10" = "#2A4F7D"
+)
+
+res_ph <- run_growth_plot(
+  file_path = "~/Desktop/replot/global_culture/pH.txt",
+  cond_levels = c("6", "7","8", "9", "10"),
+  cond_name = "pH",
+  cond_label = "pH",
+  color_map = ph_cols,
+  out_pdf = "~/Desktop/replot/global_culture/pH_growth_curve_mixed_model.pdf",
+  y_max = 2.2
+)
+
+ggsave(filename = '~/Desktop/replot/global_culture/pH_growth_curve_mixed_model.pdf',width = 5, height = 3)
+
+
+## 2. salinity
+
+salt_cols <- c(
+  "0" = "#345C7B",
+  "1" = "#507579",
+  "3" = "#657E57",
+  "5" = "#AEAE5C"
+)
+
+res_salt <- run_growth_plot(
+  file_path = "~/Desktop/replot/global_culture/salinity.txt",
+  cond_levels = c("0", "1", "3","5"),
+  cond_name = "NaCl",
+  cond_label = "NaCl (%)",
+  color_map = salt_cols,
+  out_pdf = "~/Desktop/replot/global_culture/salinity_growth_curve_mixed_model.pdf",
+  y_max = 2.5
+)
+
+ggsave(filename = '~/Desktop/replot/global_culture/salinity_growth_curve_mixed_model.pdf',width = 5, height = 3)
+
+
+## 3. temperature
+
+temp_cols <- c(
+  "15" = "#F4EA99",
+  "30" = "#F29B38",
+  "37" = "#BC271C",
+  "45" = "#8D1A13"
+)
+
+res_temp <- run_growth_plot(
+  file_path = "~/Desktop/replot/global_culture/temperature.txt",
+  cond_levels = c("15", "30","37", "45"),
+  cond_name = "Tem",
+  cond_label = "Temperature (°C)",
+  color_map = temp_cols,
+  out_pdf = "~/Desktop/replot/global_culture/temperature_growth_curve_mixed_model.pdf",
+  y_max = 2.3
+)
+
+ggsave(filename = '~/Desktop/replot/global_culture/tem_growth_curve_mixed_model.pdf',width = 5, height = 3)
+
+
+## 耐受性CAS 
+
+
+library(dplyr)
+library(ggplot2)
+
+df <- read.delim(
+  "~/Desktop/replot/global_culture/cas-1.txt",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  header = TRUE,
+  sep = "\t"
+)
+
+df_plot <- df %>%
+  mutate(
+    cas_mean = rowMeans(select(., `cas-1`, `cas-2`, `cas-3`), na.rm = TRUE),
+    cas_per_cfu_1e8 = cas_mean / CFU * 1e8,
+    cas_per_od = cas_mean / OD600,
+    group = factor(group, levels = c("NaCl", "pH", "Temperature")),
+    type = as.character(type)
+  ) %>%
+  mutate(
+    type = case_when(
+      group == "NaCl" ~ factor(type, levels = c("0", "1", "3", "5")),
+      group == "pH" ~ factor(type, levels = c("6", "7", "8", "9", "10")),
+      group == "Temperature" ~ factor(type, levels = c("15", "30", "37", "45")),
+      TRUE ~ factor(type)
+    ),
+    fill_key = paste(group, type, sep = "_")
+  )
+
+
+
+fill_cols <- c(
+  "NaCl_0" = "#345C7B",
+  "NaCl_1" = "#507579",
+  "NaCl_3" = "#657E57",
+  "NaCl_5" = "#AEAE5C",
+  
+  "pH_6"  = "#C2A035",
+  "pH_7"  = "#5F745C",
+  "pH_8"  = "#4D7071",
+  "pH_9"  = "#395F80",
+  "pH_10" = "#2A4F7D",
+  
+  "Temperature_15" = "#F4EA99",
+  "Temperature_30" = "#F29B38",
+  "Temperature_37" = "#BC271C",
+  "Temperature_45" = "#8D1A13"
+)
+
+
+
+plot_cas_box <- function(dat, yvar, ylab, outfile) {
+  y_top <- max(dat[[yvar]], na.rm = TRUE) * 1.02
+  
+  p <- ggplot(dat, aes(x = type, y = .data[[yvar]], fill = fill_key)) +
+    geom_boxplot(
+      width = 0.62,
+      outlier.shape = NA,
+      color = "black",
+      linewidth = 0.75,
+      alpha = 0.95
+    ) +
+    geom_jitter(
+      width = 0.10,
+      size = 2.8,
+      shape = 21,
+      stroke = 0.45,
+      color = "black",
+      alpha = 0.9
+    ) +
+    # stat_summary(
+    #   fun = mean,
+    #   geom = "point",
+    #   shape = 21,
+    #   size = 2.6,
+    #   fill = "black",
+    #   color = "black",
+    #   stroke = 0.3
+    # ) +
+    facet_grid(. ~ group, scales = "free_x", space = "free_x") +
+    scale_fill_manual(values = fill_cols, drop = FALSE) +
+    coord_cartesian(ylim = c(20, y_top)) +
+    labs(
+      x = NULL,
+      y = ylab
+    ) +
+    theme_classic(base_size = 16) +
+    theme(
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
+      axis.line = element_blank(),
+      axis.ticks = element_line(linewidth = 0.6),
+      axis.text.x = element_text(size = 16, color = "black"),
+      axis.text.y = element_text(size = 16, color = "black"),
+      axis.title.y = element_text(size = 16),
+      strip.background = element_rect(fill = "white", color = "black", linewidth = 0.8),
+      strip.text = element_text(size = 16),
+      legend.position = "none"
+    )
+  
+  print(p)
+  ggsave(outfile, p, width = 10.5, height = 4.2)
+}
+
+
+plot_cas_box(
+  df_plot,
+  yvar = "cas_mean",
+  ylab = expression(paste("Siderophore (", mu, "M DFOB eq.)")),
+  outfile = "~/Desktop/replot/global_culture/CAS_raw_uM_boxplot.pdf"
+)
+
+ggsave(filename = "~/Desktop/replot/global_culture/cas-raw-CFU.pdf",width = 7,height = 3) 
+
+
+df_plot_rel <- df_plot %>%
+  filter(!(group == "pH" & type == "10")) %>%
+  filter(!(group == "Temperature" & type == "45"))
+
+
+plot_cas_box(
+  df_plot_rel,
+  yvar = "cas_per_cfu_1e8",
+  ylab = expression(paste("Siderophore (", mu, "M / ", 10^8, " CFU)")),
+  outfile = "~/Desktop/replot/global_culture/CAS_per_CFU_boxplot_no_pH10.pdf"
+)
+
+
+
+library(dplyr)
+library(FSA)
+
+df <- read.delim(
+  "~/Desktop/replot/global_culture/cas-1.txt",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  header = TRUE,
+  sep = "\t"
+)
+
+## 1. 整理数据
+df_plot <- df %>%
+  mutate(
+    cas_mean = rowMeans(select(., `cas-1`, `cas-2`, `cas-3`), na.rm = TRUE),
+    cas_per_cfu_1e8 = cas_mean / CFU * 1e8,
+    group = factor(group, levels = c("NaCl", "pH", "Temperature")),
+    type = as.character(type)
+  ) %>%
+  mutate(
+    type = case_when(
+      group == "NaCl" ~ factor(type, levels = c("0", "1", "3", "5")),
+      group == "pH" ~ factor(type, levels = c("6", "7", "8", "9", "10")),
+      group == "Temperature" ~ factor(type, levels = c("15", "30", "37", "45")),
+      TRUE ~ factor(type)
+    )
+  )
+
+
+## A. 矫正前：cas_mean
+
+
+## KW
+kw_raw <- df_plot %>%
+  group_by(group) %>%
+  summarise(
+    p_kw = kruskal.test(cas_mean ~ type)$p.value,
+    .groups = "drop"
+  )
+
+print(kw_raw)
+
+## Dunn
+dunn_raw <- df_plot %>%
+  group_by(group) %>%
+  do({
+    out <- FSA::dunnTest(cas_mean ~ type, data = ., method = "bh")$res
+    out
+  }) %>%
+  ungroup()
+
+View(dunn_raw)
+
+## 只保留 unadjusted p < 0.05
+dunn_raw_sig <- dunn_raw %>%
+  filter(P.unadj < 0.05)
+
+print(dunn_raw_sig)
+
+## 导出
+write.csv(kw_raw,
+          "~/Desktop/replot/global_culture/CAS_raw_KW.csv",
+          row.names = FALSE)
+
+write.csv(dunn_raw,
+          "~/Desktop/replot/global_culture/CAS_raw_Dunn.csv",
+          row.names = FALSE)
+
+write.csv(dunn_raw_sig,
+          "~/Desktop/replot/global_culture/CAS_raw_Dunn_sig.csv",
+          row.names = FALSE)
+
+
+## B. 矫正后：cas_per_cfu_1e8
+## 过滤 pH=10 和 Temperature=45
+
+
+df_rel <- df_plot %>%
+  filter(!(group == "pH" & as.character(type) == "10")) %>%
+  filter(!(group == "Temperature" & as.character(type) == "45"))
+
+## KW
+kw_rel <- df_rel %>%
+  group_by(group) %>%
+  summarise(
+    p_kw = kruskal.test(cas_per_cfu_1e8 ~ type)$p.value,
+    .groups = "drop"
+  )
+
+print(kw_rel)
+
+## Dunn
+dunn_rel <- df_rel %>%
+  group_by(group) %>%
+  do({
+    out <- FSA::dunnTest(cas_per_cfu_1e8 ~ type, data = ., method = "bh")$res
+    out
+  }) %>%
+  ungroup()
+
+View(dunn_rel)
+
+## 只保留 unadjusted p < 0.05
+dunn_rel_sig <- dunn_rel %>%
+  filter(P.unadj < 0.05)
+
+print(dunn_rel_sig)
+
+## 导出
+write.csv(kw_rel,
+          "~/Desktop/replot/global_culture/CAS_perCFU_KW.csv",
+          row.names = FALSE)
+
+write.csv(dunn_rel,
+          "~/Desktop/replot/global_culture/CAS_perCFU_Dunn.csv",
+          row.names = FALSE)
+
+write.csv(dunn_rel_sig,
+          "~/Desktop/replot/global_culture/CAS_perCFU_Dunn_sig.csv",
+          row.names = FALSE)
+```
+
+## 6.6 Isolate-level siderophore screening
+
+```{r isolate-siderophore-screening}
+  library(ape)
+  library(ggplot2)
+  library(ggtree)
+  library(dplyr)
+  library(patchwork)
+  library(grid)
+  
+ 
+  # 1. read data
+
+  tr <- read.tree(
+    "~/Desktop/replot/culture/field-experiment/16s/metagenome/50-culture/16s-50.culture.nwk"
+  )
+  
+  dat1 <- read.delim(
+    "~/Desktop/replot/culture/field-experiment/16s/metagenome/50-culture/16s-culture_idlabel.txt",
+    stringsAsFactors = FALSE,
+    check.names = FALSE,
+    header = TRUE,
+    sep = "\t"
+  )
+  
+  cas_dat <- read.delim(
+    "~/Desktop/replot/culture/field-experiment/16s/metagenome/50-culture/50.cas.txt",
+    stringsAsFactors = FALSE,
+    check.names = FALSE,
+    header = TRUE,
+    sep = "\t"
+  )
+  
+  # 只保留树上有的样本
+  dat1 <- dat1 %>% filter(ID %in% tr$tip.label)
+  cas_dat <- cas_dat %>% filter(ID %in% tr$tip.label)
+  
+  
+  # 2. genus grouping
+ 
+  dat1$genus_grouped <- case_when(
+    dat1$genus %in% c("Arthrobacter") ~ "Arthrobacter",
+    dat1$genus %in% c("Pseudarthrobacter") ~ "Pseudarthrobacter",
+    dat1$genus %in% c("Bacillus_A", "Bacillus_I", "Bacillus") ~ "Bacillus_A",
+    dat1$genus %in% c("Microbacterium") ~ "Microbacterium",
+    dat1$genus %in% c("Paenibacillus", "Peribacillus") ~ "Peribacillus",
+    dat1$genus %in% c("Sinorhizobium") ~ "Sinorhizobium",
+    dat1$genus %in% c("Streptomyces") ~ "Streptomyces",
+    TRUE ~ "Other genus"
+  )
+  
+  genus_order <- c(
+    "Arthrobacter",
+    "Bacillus_A",
+    "Microbacterium",
+    "Peribacillus",
+    "Sinorhizobium",
+    "Streptomyces",
+    "Other genus"
+  )
+  
+  dat1$genus_grouped <- factor(dat1$genus_grouped, levels = genus_order)
+  
+  
+  # 3. color palette
+ 
+  genus_cols <- c(
+    "Arthrobacter"   = "#D81B60",
+    "Bacillus_A"     = "#7CAE00",
+    "Microbacterium" = "#1B9E77",
+    "Peribacillus"   = "#F564E3",
+    "Sinorhizobium"  = "#E67E22",
+    "Streptomyces"   = "#8E44AD",
+    "Other genus"    = "#BDBDBD"
+  )
+  
+  dat1$significant <- factor(dat1$significant, levels = c("No", "Yes"))
+  
+  sig_cols <- c(
+    "No"  = "#D9D9D9",
+    "Yes" = "#1B9E77"
+  )
+  
+  
+  # 4. group tree
+ 
+  group_list <- split(dat1$ID, dat1$genus_grouped)
+  tr2 <- groupOTU(tr, group_list)
+  
+  
+  # 5. CAS summary
+ 
+  cas_sum <- cas_dat %>%
+    group_by(ID) %>%
+    summarise(
+      cas_mean = mean(cas, na.rm = TRUE),
+      cas_sd   = sd(cas, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  dat1_plot <- dat1 %>%
+    left_join(cas_sum, by = "ID")
+  
+ 
+  # 6. base tree
+  
+  p_tree <- ggtree(
+    tr2,
+    layout = "rectangular",
+    aes(color = group),
+    size = 0.75
+  ) +
+    geom_tiplab(
+      aes(label = label),
+      size = 4.3,
+      offset = 0.015,
+      align = TRUE,
+      linetype = "dotted",
+      linesize = 0.85,
+      lineend = "round",
+      show.legend = FALSE
+    ) +
+    geom_treescale(x = 0.5, y = 22, width = 0.05, fontsize = 5) +
+    scale_color_manual(
+      values = genus_cols,
+      breaks = genus_order,
+      limits = genus_order,
+      name = "Genus",
+      guide = guide_legend(override.aes = list(size = 1.4))
+    ) +
+    theme(
+      legend.position = "right",
+      legend.title = element_text(size = 15, face = "bold"),
+      legend.text = element_text(size = 11),
+      legend.box = "vertical",
+      legend.spacing.y = unit(0.16, "cm"),
+      plot.margin = margin(5, 2, 5, 5, "mm"),
+      panel.background = element_blank(),
+      plot.background = element_blank()
+    )
+  
+  
+  # 7. tip positions
+  
+  tip_pos <- p_tree$data %>%
+    dplyr::filter(isTip) %>%
+    dplyr::transmute(ID = label, ypos = y)
+  
+  dat1_plot2 <- dat1_plot %>%
+    left_join(tip_pos, by = "ID")
+  
+  cas_plot <- cas_dat %>%
+    left_join(tip_pos, by = "ID")
+  
+  y_rng <- range(tip_pos$ypos) + c(-0.5, 0.5)
+  
+ 
+  # 8. priority strains panel
+ 
+  p_sig <- ggplot(dat1_plot2, aes(x = 1, y = ypos, fill = significant)) +
+    geom_tile(
+      width = 0.9,
+      height = 0.9,
+      colour = "white",
+      linewidth = 0.35
+    ) +
+    scale_fill_manual(
+      values = sig_cols,
+      breaks = c("No", "Yes"),
+      limits = c("No", "Yes"),
+      name = "Priority strains"
+    ) +
+    scale_y_continuous(limits = y_rng, expand = c(0, 0)) +
+    scale_x_continuous(expand = c(0, 0)) +
+    theme_void() +
+    theme(
+      legend.position = "right",
+      legend.title = element_text(size = 15, face = "bold"),
+      legend.text = element_text(size = 11),
+      plot.margin = margin(5, 2, 5, 2, "mm")
+    )
+  
+
+  # 9. custom horizontal boxplot stats
+ 
+  box_stats <- cas_plot %>%
+    group_by(ID, ypos) %>%
+    summarise(
+      q1       = quantile(cas, 0.25, na.rm = TRUE),
+      med      = median(cas, na.rm = TRUE),
+      q3       = quantile(cas, 0.75, na.rm = TRUE),
+      iqr      = IQR(cas, na.rm = TRUE),
+      minv     = min(cas, na.rm = TRUE),
+      maxv     = max(cas, na.rm = TRUE),
+      cas_mean = mean(cas, na.rm = TRUE),
+      .groups  = "drop"
+    ) %>%
+    rowwise() %>%
+    mutate(
+      low_bound  = q1 - 1.5 * iqr,
+      high_bound = q3 + 1.5 * iqr,
+      low  = max(cas_plot$cas[cas_plot$ID == ID & cas_plot$cas >= low_bound], na.rm = TRUE),
+      high = min(cas_plot$cas[cas_plot$ID == ID & cas_plot$cas <= high_bound], na.rm = TRUE)
+    ) %>%
+    ungroup()
+  
+  box_stats$low[!is.finite(box_stats$low)]   <- box_stats$minv[!is.finite(box_stats$low)]
+  box_stats$high[!is.finite(box_stats$high)] <- box_stats$maxv[!is.finite(box_stats$high)]
+  
+ 
+  # 10. CAS panel
+  
+  box_h <- 0.32
+  cap_h <- 0.14
+  
+  p_cas <- ggplot() +
+    geom_segment(
+      data = box_stats,
+      aes(x = low, xend = q1, y = ypos, yend = ypos),
+      linewidth = 0.35,
+      colour = "black"
+    ) +
+    geom_segment(
+      data = box_stats,
+      aes(x = q3, xend = high, y = ypos, yend = ypos),
+      linewidth = 0.35,
+      colour = "black"
+    ) +
+    geom_segment(
+      data = box_stats,
+      aes(x = low, xend = low, y = ypos - cap_h, yend = ypos + cap_h),
+      linewidth = 0.35,
+      colour = "black"
+    ) +
+    geom_segment(
+      data = box_stats,
+      aes(x = high, xend = high, y = ypos - cap_h, yend = ypos + cap_h),
+      linewidth = 0.35,
+      colour = "black"
+    ) +
+    geom_rect(
+      data = box_stats,
+      aes(
+        xmin = q1, xmax = q3,
+        ymin = ypos - box_h, ymax = ypos + box_h
+      ),
+      fill = "grey88",
+      colour = "black",
+      linewidth = 0.35
+    ) +
+    geom_segment(
+      data = box_stats,
+      aes(x = med, xend = med, y = ypos - box_h, yend = ypos + box_h),
+      linewidth = 0.4,
+      colour = "black"
+    ) +
+    geom_point(
+      data = box_stats,
+      aes(x = cas_mean, y = ypos),
+      size = 0.9,
+      colour = "black"
+    ) +
+    scale_y_continuous(limits = y_rng, expand = c(0, 0)) +
+    labs(x = "CAS assay", y = NULL) +
+    theme_bw(base_size = 11) +
+    theme(
+      axis.title.y = element_blank(),
+      axis.text.y  = element_blank(),
+      axis.ticks.y = element_blank(),
+      panel.grid   = element_blank(),
+      plot.margin  = margin(5, 5, 5, 2, "mm")
+    )
+  
+ 
+  # 11. combine
+ 
+    p_tree + p_sig + p_cas +
+    plot_layout(widths = c(0.6, 0.01, 0.2), guides = "collect") &
+    theme(legend.position = "right")
+  
+
+  
+  
+  ggsave(filename = "~/Desktop/replot/culture/siderophore-experi/plot-data/50-tree-cas.pdf", width = 12,height = 12)
+```
+
+## 6.7 Mineral-specific iron release
+
+```{r mineral-iron-release}
+# different iron ore
+library(ggplot2)
+library(dplyr)
+library(ggpubr)
+install.packages('ggpmisc')
+df <- read.delim('~/Desktop/replot/culture/siderophore-experi/plot-data/iron-ore.txt',
+                 stringsAsFactors = FALSE, check.names = FALSE,
+                 header = TRUE, sep = "\t")
+table(df$group)
+df$group <- factor(df$group, levels=c('FeOH3','FeOOH','Fe2O3','Fe3O4'))
+
+ggplot(df, aes(x = con, y = Fe)) +
+  geom_point(size = 1.5, alpha = 0.75, color = "#FC4E2A") +
+  geom_smooth(method = "lm", formula = y ~ x, se = TRUE, color = "#FD8D3C",fill = "#ADD8E6") +
+  facet_wrap(~ group, scales = "free_y", ncol = 2) +
+  labs(
+    title = "",
+    x = "",
+    y = "Fe released (ng)"
+  ) +
+   theme_pubr(base_size = 16) + 
+  theme(axis.text.x = element_text(size = 16, colour = 'black'),
+        axis.text.y = element_text(size = 16, colour = 'black'),
+    strip.background = element_rect(fill = "white")
+  )
+
+
+ggsave(filename = '~/Desktop/replot/culture/siderophore-experi/plot-data/iron-ore.pdf',width = 7, height = 5)
+
+
+```
+
+## 6.8 Sand-matrix element mobilization
+### DFOE concentration
+```{r DFOE-concentration}
+ library(ggplot2)
+ library(dplyr)
+  
+  data <- read.delim('~/Desktop/replot/culture/field-experiment/data-plot/5_10_deof_tar.txt',
+                     stringsAsFactors = FALSE, check.names = FALSE,
+                     header = TRUE, sep = "\t")
+  
+ 
+  # Rename groups
+
+  data$group <- dplyr::recode(data$group,
+                              "1*"  = "1x inoculum",
+                              "2*" = "2x inoculum")
+  
+  data$group <- factor(data$group, levels = c("NC", "1x inoculum", "2x inoculum"))
+  
+  # day 保持数值型，方便画连续趋势线
+  data$day <- as.numeric(as.character(data$day))
+  
+
+  # Colors
+  # for box plot
+  mycolors <- c(
+    "NC" = "#E64B35FF",
+    "1x inoculum" = "#9BDDE5",
+    "2x inoculum" = "#00BCD4"
+  )
+  # for line plot
+  mycolors <- c(
+    "NC" = "#E64B35FF",
+    "1x inoculum" = "#00acc1",
+    "2x inoculum" = "#006064"
+  )
+  
+  
+  # Summary: mean ± SE
+  
+  sum_df <- data %>%
+    group_by(day, group) %>%
+    summarise(
+      mean = mean(Con, na.rm = TRUE),
+      se   = sd(Con, na.rm = TRUE) / sqrt(sum(!is.na(Con))),
+      .groups = "drop"
+    )
+  
+  
+  # Plot
+  
+  p <- ggplot() +
+    # raw points
+    geom_point(
+      data = data,
+      aes(x = day, y = Con, color = group),
+      position = position_jitter(width = 1.2, height = 0),
+      size = 1.8,
+      alpha = 0.45,
+      show.legend = FALSE
+    ) +
+    # trend line
+    geom_line(
+      data = sum_df,
+      aes(x = day, y = mean, color = group, group = group),
+      linewidth = 1.1
+    ) +
+    # error bar
+    geom_errorbar(
+      data = sum_df,
+      aes(
+        x = day,
+        ymin = mean - se,
+        ymax = mean + se,
+        color = group
+      ),
+      width = 3.5,
+      linewidth = 0.8
+    ) +
+    # mean point
+    geom_point(
+      data = sum_df,
+      aes(x = day, y = mean, fill = group, color = group),
+      shape = 21,
+      size = 3.2,
+      stroke = 0.8
+    ) +
+    scale_color_manual(values = mycolors) +
+    scale_fill_manual(values = mycolors) +
+    scale_x_continuous(
+      breaks = c(0, 21, 42, 63, 120),
+      limits = c(-5, 125),
+      expand = expansion(mult = c(0, 0))
+    ) +
+    scale_y_continuous(
+      expand = expansion(mult = c(0, 0), add = c(0.0003, 0.001))
+    ) +
+    labs(
+      x = "",
+      y = "DFOE concentration",
+      color = NULL,
+      fill = NULL
+    ) +
+    theme_bw(base_size = 20) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
+      legend.position = "bottom",
+      legend.title = element_blank(),
+      axis.text = element_text(size = 20, color = "black"),
+      axis.title = element_text(size = 20, color = "black"),
+      legend.text = element_text(size = 16)
+    )
+  
+  p
+  
+  ggsave(filename = "~/Desktop/replot/culture/field-experiment/data-plot/wt-5-10-deof.pdf", width = 6,height = 5)
+  
+
+  library(dplyr)
+  library(lme4)
+  library(lmerTest)
+  library(emmeans)
+  
+  data <- read.delim(
+    '~/Desktop/replot/culture/field-experiment/data-plot/ks-3-10.txt',
+    stringsAsFactors = FALSE, check.names = FALSE,
+    header = TRUE, sep = "\t"
+  )
+  
+  data <- read.delim('~/Desktop/replot/culture/field-experiment/data-plot/5_10_deof_tar.txt',
+                     stringsAsFactors = FALSE, check.names = FALSE,
+                     header = T, sep = "\t")
+  
+  data <- data %>%
+    mutate(
+      group = factor(group, levels = c("NC", "5*", "10*")),
+      day   = factor(day, levels = c(0, 21, 42, 63, 120)),
+      order = factor(order),
+      rep_id = interaction(group, order, drop = TRUE)
+    )
+  
+  # mixed model
+  fit_lmm <- lmer(Con ~ group * day + (1 | rep_id), data = data)
+  
+  anova(fit_lmm)
+  summary(fit_lmm)
+  
+  
+  emm1 <- emmeans(fit_lmm, ~ group | day)
+  pairs(emm1, adjust = "BH")
+  
+  plot(fit_lmm)
+  qqnorm(resid(fit_lmm))
+  qqline(resid(fit_lmm))
+  
+  shapiro.test(resid(fit_lmm))
+
+```
+
+### element mobilization
+```{r siderophore-element-mobilization}
+  library(dplyr)
+  library(tidyr)
+  library(forcats)
+  
+
+  
+  df <- read.delim(
+    "~/Desktop/replot/culture/All-icp/gradient-lab-plot.txt",
+    stringsAsFactors = FALSE, check.names = FALSE,
+    header = TRUE, sep = "\t"
+  )
+  
+  df_long <- df %>%
+    pivot_longer(cols = Mg:Pb, names_to = "element", values_to = "value") %>%
+    mutate(
+      element = factor(element, levels = c("Fe","Al","Zn","Cu","Mn","Mg","Pb","Ca")),
+      group   = factor(group, levels = c("NC", "WT-5", "WT-10")),
+      day     = factor(day, levels = c(21, 42, 63, 120)),
+      day_num = as.numeric(as.character(day)),
+      order   = factor(order),
+      rep_id  = interaction(group, order, drop = TRUE)
+    )
+
+ # 按元素逐个做重复测量模型
+  #推荐版：nlme::lm
+  
+  library(nlme)
+  library(emmeans)
+  library(purrr)
+  library(broom.mixed)
+  #install.packages('broom.mixed')
+  
+  fit_one_element <- function(ele, dat) {
+    subdat <- dat %>% filter(element == ele)
+    
+    fit <- lme(
+      value ~ group * day,
+      random = ~1 | rep_id,
+      correlation = corAR1(form = ~ day_num | rep_id),
+      data = subdat,
+      method = "REML"
+    )
+    
+    anova_tab <- anova(fit) %>%
+      as.data.frame() %>%
+      tibble::rownames_to_column("term") %>%
+      mutate(element = ele)
+    
+    emm_group_by_day <- emmeans(fit, ~ group | day)
+    pair_group_by_day <- pairs(emm_group_by_day, adjust = "BH") %>%
+      as.data.frame() %>%
+      mutate(element = ele, contrast_type = "group_within_day")
+    
+    emm_day_by_group <- emmeans(fit, ~ day | group)
+    pair_day_by_group <- pairs(emm_day_by_group, adjust = "BH") %>%
+      as.data.frame() %>%
+      mutate(element = ele, contrast_type = "day_within_group")
+    
+    list(
+      fit = fit,
+      anova = anova_tab,
+      pair_group_by_day = pair_group_by_day,
+      pair_day_by_group = pair_day_by_group
+    )
+  }
+  
+  elements <- levels(df_long$element)
+  
+  res_list <- map(elements, fit_one_element, dat = df_long)
+  names(res_list) <- elements
+  
+  anova_all <- bind_rows(map(res_list, "anova"))
+  pair_group_day_all <- bind_rows(map(res_list, "pair_group_by_day"))
+  pair_day_group_all <- bind_rows(map(res_list, "pair_day_by_group"))  
+  
+  View(pair_group_day_all)
+  
+  
+ View(pair_group_day_all)
+  
+ 
+  
+  
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  
+  
+  
+  df <- read.delim(
+    "~/Desktop/replot/culture/All-icp/gradient-lab-plot.txt",
+    stringsAsFactors = FALSE, check.names = FALSE,
+    header = TRUE, sep = "\t"
+  )
+  
+  df_long <- df %>%
+    pivot_longer(cols = Mg:Pb, names_to = "element", values_to = "value") %>%
+    mutate(
+      element = factor(element, levels = c("Fe","Al","Zn","Cu","Mn","Mg","Pb","Ca")),
+      group   = factor(group, levels = c("NC", "WT-5", "WT-10")),
+      day     = factor(day, levels = c(21, 42, 63, 120))
+    )
+  
+  
+  mycolors <- c(
+    "NC"   = "#E64B35FF",
+    "WT-5" = "#e0f7fa",
+    "WT-10"= "#00BCD4"
+  )
+  
+  plot_main <- df_long %>%
+    filter(element %in% c("Fe", "Al"))
+  
+  plot_main <- df_long %>%
+    filter(element %in% c("Ca","Mg","Mn","Zn","Cu","Pb"))
+  plot_main$element <- factor(plot_main$element, levels = c("Ca","Mg","Mn","Zn","Cu","Pb"))
+  
+  ggplot(plot_main, aes(x = day, y = value, fill = group)) +
+    geom_boxplot(
+      aes(color = group),
+      width = 0.6,
+      position = position_dodge(width = 0.65),
+      outlier.shape = NA,
+      alpha = 0.85
+    ) +
+    geom_jitter(
+      aes(color = group),
+      position = position_jitterdodge(jitter.width = 0.12, dodge.width = 0.65),
+      size = 1.8,
+      alpha = 0.7,
+      show.legend = FALSE
+    ) +
+    facet_wrap(~ element, scales = "free_y", ncol = 3) +
+    scale_fill_manual(values = mycolors) +
+    scale_color_manual(values = rep("#263238", 3)) +
+    labs(
+      x = "",
+      y = expression("DTPA-extractable concentration (mg/kg sand)")
+    ) +
+    scale_y_continuous(expand = expansion(mult = c(0.1, 0.15)))+
+    theme_bw(base_size = 14) +
+    theme(
+      panel.grid = element_blank(),
+      legend.position = "none",
+      legend.title = element_blank(),
+      strip.background = element_rect(fill = "white"),
+      strip.text = element_text(size = 14, color = "black"),
+      axis.text = element_text(size = 14, color = "black"),
+      axis.title = element_text(size = 14, color = "black")
+    )
+  
+  ggsave(filename = "~/Desktop/replot/culture/All-icp/element-5-10-si.pdf", width = 12,height = 5)
+  
+  ggsave(filename = "~/Desktop/replot/culture/All-icp/element-5-10.pdf", width = 7,height = 3)
+  
+  ## change to line plot for Fe and Al
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  
+  df <- read.delim(
+    "~/Desktop/replot/culture/All-icp/gradient-lab-plot.txt",
+    stringsAsFactors = FALSE, check.names = FALSE,
+    header = TRUE, sep = "\t"
+  )
+  
+ 
+  # Long format
+ 
+  df_long <- df %>%
+    pivot_longer(
+      cols = Mg:Pb,
+      names_to = "element",
+      values_to = "value"
+    ) %>%
+    mutate(
+      element = factor(element, levels = c("Fe", "Al", "Zn", "Cu", "Mn", "Mg", "Pb", "Ca")),
+      group   = factor(group, levels = c("NC", "WT-5", "WT-10")),
+      day     = as.numeric(as.character(day))
+    )
+  
+  
+  # Colors
+  mycolors <- c(
+    "NC"    = "#E64B35FF",
+    "WT-5"  = "#00acc1",
+    "WT-10" = "#006064"
+  )
+  
+  # Select elements
+ 
+  # Fe + Al
+  plot_main <- df_long %>%
+    filter(element %in% c("Fe", "Al")) %>%
+    mutate(element = factor(element, levels = c("Fe", "Al")))
+  
+  # Other elements
+  plot_main <- df_long %>%
+    filter(element %in% c("Ca", "Mg", "Mn", "Zn", "Cu", "Pb")) %>%
+    mutate(element = factor(element, levels = c("Ca", "Mg", "Mn", "Zn", "Cu", "Pb")))
+  
+
+  # Summary: mean ± SE
+  sum_df <- plot_main %>%
+    group_by(element, day, group) %>%
+    summarise(
+      mean = mean(value, na.rm = TRUE),
+      se   = sd(value, na.rm = TRUE) / sqrt(sum(!is.na(value))),
+      .groups = "drop"
+    )
+  
+  # Plot: mean ± SE + line + raw points
+  ggplot() +
+    # raw points
+    geom_point(
+      data = plot_main,
+      aes(x = day, y = value, color = group),
+      position = position_jitter(width = 1.2, height = 0),
+      size = 1.4,
+      alpha = 0.40,
+      show.legend = FALSE
+    ) +
+    # trend line
+    geom_line(
+      data = sum_df,
+      aes(x = day, y = mean, color = group, group = group),
+      linewidth = 0.9
+    ) +
+    # error bar
+    geom_errorbar(
+      data = sum_df,
+      aes(
+        x = day,
+        ymin = mean - se,
+        ymax = mean + se,
+        color = group
+      ),
+      width = 3.2,
+      linewidth = 0.7
+    ) +
+    # mean point
+    geom_point(
+      data = sum_df,
+      aes(x = day, y = mean, fill = group, color = group),
+      shape = 21,
+      size = 2.6,
+      stroke = 0.9
+    ) +
+    facet_wrap(~ element, scales = "free_y", ncol = 3) +
+    scale_color_manual(values = mycolors, drop = FALSE) +
+    scale_fill_manual(values = mycolors, drop = FALSE) +
+    scale_x_continuous(
+      breaks = c(21, 42, 63, 120),
+      limits = c(16, 125),
+      expand = expansion(mult = c(0, 0))
+    ) +
+    scale_y_continuous(
+      expand = expansion(mult = c(0, 0), add = c(0.02, 0.08))
+    ) +
+    labs(
+      x = "",
+      y = expression("DTPA-extractable concentration (mg/kg sand)"),
+      color = NULL,
+      fill = NULL
+    ) +
+    theme_bw(base_size = 14) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.7),
+      legend.position = "none",
+      legend.title = element_blank(),
+      strip.background = element_rect(fill = "white", color = "black", linewidth = 0.7),
+      strip.text = element_text(size = 14, color = "black"),
+      axis.text = element_text(size = 14, color = "black"),
+      axis.title = element_text(size = 14, color = "black"),
+      plot.margin = margin(5, 5, 5, 5)
+    )
+  
+  ggsave(filename = "~/Desktop/replot/culture/All-icp/element-5-10-1.pdf", width = 7,height = 3)
+  ggsave(filename = "~/Desktop/replot/culture/All-icp/element-5-10-si.pdf", width = 12,height = 5)
+ 
+```

@@ -1,0 +1,1223 @@
+---
+title: "Desert restoration project -- Part 2a: Microbial diversity (beta/alpha diversity, phylogeny, fuzzy clustering)"
+author: "Qiong_Chen"
+date: "2026-08-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+source("00_setup.R")
+```
+
+# 2. Microbial diversity and community succession
+
+## 2.1 Beta-diversity
+
+```{r beta-diversity}
+# Figure 2A
+# SD vs SI PCoA (Bray-Curtis)
+# + SI year gradient + centroid trajectory
+# + PERMANOVA + PERMDISP
+
+# SD vs SI PCoA (Bray-Curtis)
+# + SI year gradient
+# + SD/SI ellipses
+# + PERMANOVA (only)
+# + prevalence filter: >=10% non-zero in SD+SI
+
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(ggplot2)
+  library(vegan)
+  library(stringr)
+})
+
+# 1) Load data 
+infile <- "~/Desktop/replot/meta/species_all_acpm.txt"
+
+df <- read.delim(
+  infile,
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  row.names = 1,
+  header = TRUE,
+  sep = "\t"
+)
+
+stopifnot(all(c("kind", "year") %in% colnames(df)))
+
+# 2) Keep SD & SI only
+target_years <- c("11", "12", "14", "15", "17")   
+
+df_sub <- df %>%
+  filter(kind %in% c("SD", "SI")) %>%
+  mutate(
+    kind = factor(kind, levels = c("SD", "SI")),
+    year_chr = str_trim(as.character(year))
+  ) %>%
+  
+ 
+  filter(kind == "SD" | (kind == "SI" & year_chr %in% target_years)) %>%
+  mutate(
+    year_chr = factor(year_chr, levels = target_years),
+    #  ellipse 
+    group2 = kind
+  )
+
+# 3) Build abundance matrix + prevalence filter 
+meta_cols <- intersect(c("group", "kind", "year", "year_chr", "group2"), colnames(df_sub))
+otu <- df_sub %>% select(-all_of(meta_cols))
+
+otu_mat <- as.matrix(otu)
+mode(otu_mat) <- "numeric"
+otu_mat[is.na(otu_mat)] <- 0
+
+# Remove all-zero species first (optional)
+otu_mat <- otu_mat[, colSums(otu_mat) > 0, drop = FALSE]
+
+# Prevalence filter: keep species present (non-zero) in >=10% samples (within SD+SI subset)
+prev_cutoff <- 0.10
+n_samples <- nrow(otu_mat)
+min_n_nonzero <- ceiling(prev_cutoff * n_samples)
+
+nonzero_counts <- colSums(otu_mat > 0)
+keep_cols <- nonzero_counts >= min_n_nonzero
+otu_mat <- otu_mat[, keep_cols, drop = FALSE]
+
+cat("Samples (SD+SI):", n_samples, "\n")
+cat("Species kept (>=10% non-zero):", ncol(otu_mat), "\n")
+
+# 4) Bray-Curtis distance 
+dist_bc <- vegdist(otu_mat, method = "bray")
+
+# 5) PCoA (cmdscale) 
+pcoa <- cmdscale(dist_bc, k = 2, eig = TRUE)
+
+coords <- as.data.frame(pcoa$points)
+colnames(coords) <- c("Dim1", "Dim2")
+coords$sample <- rownames(coords)
+
+# variance explained (approx, using positive eigenvalues)
+eig <- pcoa$eig
+eig_pos <- eig[eig > 0]
+var_exp <- eig_pos / sum(eig_pos)
+dim1_pct <- round(100 * var_exp[1], 2)
+dim2_pct <- round(100 * var_exp[2], 2)
+
+plot_df <- df_sub %>%
+  mutate(sample = rownames(df_sub)) %>%
+  left_join(coords, by = "sample") %>%
+  mutate(
+    fill_key = ifelse(kind == "SD", "SD", paste0("SI-", as.character(year_chr))),
+    fill_key = factor(fill_key, levels = c("SD", paste0("SI-", target_years)))
+  )
+
+# 6) PERMANOVA and multivariate dispersion (SD vs SI) 
+meta_test <- plot_df %>%
+  dplyr::select(sample, group2) %>%
+  tibble::column_to_rownames("sample")
+
+# Ensure that metadata order matches the distance matrix
+meta_test <- meta_test[rownames(as.matrix(dist_bc)), , drop = FALSE]
+
+# PERMANOVA
+adon <- vegan::adonis2(
+  dist_bc ~ group2,
+  data = meta_test,
+  permutations = 999
+)
+
+adon_p  <- adon$`Pr(>F)`[1]
+adon_r2 <- adon$R2[1]
+
+# Homogeneity of multivariate dispersion
+dispersion <- vegan::betadisper(
+  dist_bc,
+  group = factor(meta_test$group2)
+)
+
+dispersion_test <- vegan::permutest(
+  dispersion,
+  permutations = 999
+)
+
+dispersion_p <- dispersion_test$tab$`Pr(>F)`[1]
+
+# Annotation
+anno_text <- paste0(
+  "PERMANOVA\n",
+  "P = ", format.pval(adon_p, digits = 3, eps = 0.001), "\n",
+  "R\u00B2 = ", sprintf("%.4f", adon_r2), "\n",
+  "Dispersion P = ",
+  format.pval(dispersion_p, digits = 3, eps = 0.001)
+)
+
+anno_text
+
+
+aggregate(
+  dispersion$distances,
+  by = list(Group = dispersion$group),
+  FUN = mean
+)
+
+# annotation placement (bottom-right)
+x_rng <- range(plot_df$Dim1, na.rm = TRUE)
+y_rng <- range(plot_df$Dim2, na.rm = TRUE)
+anno_x <- x_rng[2] - 0.02 * diff(x_rng)
+anno_y <- y_rng[1] + 0.02 * diff(y_rng)
+
+# 7) Colors 
+# SD: brown；SI: 5-step green gradient (light->dark)
+si_cols <- colorRampPalette(c("#dce775", "#33691e"))(length(target_years))
+names(si_cols) <- paste0("SI-", target_years)
+
+fill_cols <- c("SD" = "#ff9800", si_cols)
+
+
+
+# ellipse colors（SD vs SI ）
+ellipse_line_cols <- c("SD" = "#e65100", "SI" = "#1b5e20")  
+ellipse_fill_cols <- c("SD" = "#ffcc80", "SI" = "#e6ee9c")  
+
+ggplot(plot_df, aes(x = Dim1, y = Dim2)) +
+  # points
+  geom_point(
+    aes(fill = fill_key),
+    shape = 21, color = "white", stroke = 0.6,
+    size = 3.5, alpha = 0.85
+  ) +
+  
+  # filled ellipse (under) 
+stat_ellipse(
+  aes(group = group2, fill = group2),
+  type = "t", level = 0.95,
+  geom = "polygon",
+  alpha = 0.18,          
+  color = NA,            
+  show.legend = FALSE
+) +
+  
+  # outline ellipse (over) 
+stat_ellipse(
+  aes(group = group2, color = group2),
+  type = "t", level = 0.95,
+  geom = "path",
+  linewidth = 0.8,       
+  show.legend = FALSE
+) +
+  
+  # scale for points
+  scale_fill_manual(
+    values = fill_cols,
+    breaks = c("SD", paste0("SI-", target_years)),
+    labels = c("SD", paste0("SI-", target_years)),
+    name = "Group"
+  ) +
+  
+  # scale for ellipse fill (SD/SI)
+  scale_fill_manual(
+    values = c(fill_cols, ellipse_fill_cols),
+    breaks = c("SD", paste0("SI-", target_years)),
+    labels = c("SD", paste0("SI-", target_years)),
+    name = "Group"
+  ) +
+  
+  # ellipse outline color
+  scale_color_manual(values = ellipse_line_cols) +
+  
+  labs(
+    x = paste0("Dim1 (", dim1_pct, "%)"),
+    y = paste0("Dim2 (", dim2_pct, "%)")
+  ) +
+  theme_bw(base_size = 16) +
+  theme(
+    panel.grid.major = element_line(color = "grey90"),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 12,colour = "black"),
+    legend.text  = element_text(size = 12,colour = 'black')
+  )
+```
+
+
+## 2.2 Decomposing beta diversity
+```{r Decomposing_beta_diversity, echo=FALSE}
+library(adespatial)   
+library(Matrix)
+
+mydata <- read.delim('~/Desktop/replot/diversity/species.all.acpm.txt',
+                     stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                     header = T, sep = "\t")
+#table(mydata$type)
+mydata <- subset(mydata, type=="Bacteria")
+mydata <- subset(mydata, type=="Archaea")
+mydata <- subset(mydata, type=="Fungi")
+mydata <- subset(mydata, type=="Metazoa")
+mydata <- subset(mydata, type=="Viridiplantae")
+
+mydata <- as.data.frame(t(mydata[,-1]))
+#mydata_si <- subset(mydata, year == c("11"))
+
+#samples in row
+result <- beta.div.comp(mydata, coef = "S", quant = F)
+summary(result)
+part <- result$part
+part
+
+
+#Pairwise dissimilarity index between samples
+D <- as.dist(result$D)
+dissimilary <- data.frame(t(combn(rownames(mydata),2)), as.numeric(D))
+
+# tril(D) # lower trangular
+#dissimilary <- data.frame(as.matrix(triu(D))) # upper triangular
+#View(dissimilary)
+#dis_melt <- reshape2::melt(dissimilary)
+#View(dis_melt)
+
+#Species turnover between sample pairs
+repl <- as.dist(result$repl)
+#repl[1:6,1:6]
+repel <- data.frame(t(combn(rownames(mydata),2)), as.numeric(repl))
+
+
+#Richness difference (or nestedness) between sample pairs
+rich <- as.dist(result$rich)
+
+richness <- data.frame(t(combn(rownames(mydata),2)), as.numeric(rich))
+#View(richness)
+
+result_all_bacteria <- cbind(dissimilary,repel,richness)
+result_all_archaea <- cbind(dissimilary,repel,richness)
+result_all_fungi <- cbind(dissimilary,repel,richness)
+result_all_animal <- cbind(dissimilary,repel,richness)
+result_all_plant <- cbind(dissimilary,repel,richness)
+
+View(result_all_1)
+result_all$Similarity <- 1-result_all$as.numeric.D.
+result_all_1 <- result_all[,6:11]
+colnames(result_all_1) <- c('Repl','X1','X2','RichDiff','Similarity','type')
+
+result_all$type <- c(rep('bacteria',3240),rep('archaea',3240),rep('fungi',3240),rep('animal',3240),rep('plant',3240))
+result_all$type <- c(rep('bacteria',7021),rep('archaea',7021),rep('fungi',7021),rep('animal',7021),rep('plant',7021))
+ 
+
+result_all <- rbind(result_all_bacteria,result_all_archaea,result_all_fungi,result_all_animal,result_all_plant)
+
+write.table(result_all, "~/Desktop/replot/beta/si_beta_bacteria.txt", 
+            sep = '\t', col.names = NA, quote = FALSE)
+
+
+# Ternary plot
+library(ggtern)
+mydata <- read.delim('~/Desktop/replot/beta/di_beta_bacteria.txt',
+                     stringsAsFactors = FALSE, check.names = FALSE,
+                     header = T, sep = "\t")
+
+mydata$type <- factor(mydata$type, levels = c("Bacteria","Fungi","Archaea"))
+
+ggtern(mydata, aes(Similarity, Repl, RichDiff, color=type, group=type)) +
+  geom_point(alpha=0.5,size=2) +
+  geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.5) +
+  theme_bw(base_size = 25)  +
+  theme_showarrows() + 
+  theme_notitles() +
+  guides(shape="none") +
+ # scale_fill_manual(values = c("#FBD9D5","#D6C87E","#F8D4F6")) +
+  scale_color_manual(values = c("#fb8072","#80b1d3","#fdb462")) +
+  facet_wrap( ~ type,scales="free", ncol=3) +
+  theme(strip.background = element_rect(fill="#FFFFFF")) +
+  theme(legend.position = "none") +
+  theme(axis.text.x = element_text(colour = 'black')) +
+  theme(axis.text.y = element_text(colour = 'black'))
+  
+ggsave(filename = "~/Desktop/replot/di_beta_decompose.pdf",width = 18,height = 6) 
+
+
+# introduce dominant factor
+mydata <- read.delim('~/Desktop/replot/beta/si_beta_bacteria.txt',
+                     stringsAsFactors = FALSE, check.names = FALSE,
+                     header = T, sep = "\t")
+
+table(mydata$type)
+mydata$type <- factor(mydata$type, levels = c("bacteria","fungi","archaea","animal","plant"))
+
+#mydata <- subset(mydata,type=='Bacteria')
+mydata$dominating = rep("norm", nrow(mydata))
+mydata$dominating[mydata$Repl/mydata$RichDiff>=1.5] = "Repl"
+mydata$dominating[mydata$RichDiff/mydata$Repl>=1.5] = "RichDiff"
+
+
+ggtern(mydata,aes(Similarity, Repl, RichDiff, color=dominating, group=type)) + 
+  geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+  geom_point(alpha=0.5) +
+  #geom_encircle(alpha=0.1,size=1) +
+  theme_bw(base_size = 32)  +
+  theme_showarrows() + 
+  theme_notitles() +
+  guides(shape=FALSE) +
+  scale_color_manual(values=c('#90CFF3','#4B7438','#D1DA3E'))+
+  scale_fill_manual(values=c('#90CFF3','#4B7438','#D1DA3E'))+
+  facet_wrap( ~ type,scales="free", ncol=5) 
+
+ggsave(filename = "~/Desktop/replot/diversity/beta/si_beta_decompose.pdf",width = 27,height = 5.8) 
+
+bacteria <- subset(mydata, type=='bacteria')
+table(bacteria$dominating)
+fungi <- subset(mydata, type=='fungi')
+table(fungi$dominating)
+archaea <- subset(mydata, type=='archaea')
+table(archaea$dominating)
+animal <- subset(mydata, type=='animal')
+table(animal$dominating)
+plant <- subset(mydata, type=='plant')
+table(plant$dominating)
+
+```
+
+## 2.3 Alpha diversity
+```{r alpha-diversity}
+
+# calculate the index one by one
+library(picante)
+library(phyloseq)
+
+#shannon index, base = exp(1)
+shannon_index <- diversity(otu, index = 'shannon',base = exp(1)) # samples in row, features in column
+head(shannon_index) 
+
+# Gini-Simpson， also calle simpson
+simpson <- diversity(otu, index = 'simpson')
+head(simpson)
+
+richness <- rowSums(otu > 0)
+head(richness)
+
+#Chao1 & ACE
+#ACE
+ace <- estimateR(otu)[4,]
+head(ace)
+
+nrow(shannon_index)
+result <- data.frame(shannon_index, simpson, richness)
+
+# alpha diversity was included in Table S1
+```
+
+## 2.4 Automatic labeling difference with a b c
+```{r using_alpha_diversity_as_an_example}
+#Construct a function to calculate the median for each group, perform Kruskal-Wallis and Behrens-Fisher tests to obtain significance, and manually determine the "abc" levels based on the median values and p-values.
+ library(mvtnorm)
+ library(reshape2)
+ # library(npmc)
+ library(ggplot2)
+
+"npmc" <-
+   function(dataset, control=NULL, df=2, alpha=0.05){
+     mvtnorm <- require(mvtnorm, quietly=TRUE);
+     if (!mvtnorm)
+     {
+       msg <- paste("npmc requires the mvtnorm-package to calculate",
+                    "p-values for the test-statistics. This package is not",
+                    "available on your system, so these values and the",
+                    "confidence-limits will be missing values in the output!\n",
+                    sep="\n");
+       warning(msg);
+     }
+     
+     if (any(df==0:2)) 
+       dfm <- c(3,2,1)[df+1]
+     else
+     {
+       warning("Wrong value for df\nUsing Satterthwaite t-approximation\n");
+       dfm <- 1;
+     }
+     
+     if (alpha<=0 || alpha>=1)
+       stop("alpha must be a value between 0 and 1");
+     
+     
+     name <- attr(dataset, "name");
+     desc <- attr(dataset, "description");
+     
+     
+     ## Function definitions 
+     
+     
+    
+     ## ssq:
+     ## Calculates a vector's sum of squares
+     
+     ssq <- function(x) sum(x*x);
+     
+     ##
+     ## force.ps: 
+     ## Forces a matrix to be positive semidefinite by replacing 
+     ## all negative eigenvalues by zero.
+     ## 
+     force.ps <- function(M.in)
+     {
+       eig <- eigen(M.in, symmetric=TRUE);
+       spec <- eig$values;
+       if (adjusted <- any(spec<0))
+       {
+         spec[spec<0] <- 0;
+         M <- eig$vectors %*% diag(spec) %*% t(eig$vectors);
+         ginv <- diag(1/sqrt(diag(M)));
+         M.out <- ginv %*% M %*% ginv;
+         ##if ((msg <- all.equal(M.in,M.out))!=TRUE) attr(M.out, "msg") <- msg;
+       }
+       else
+       {
+         M.out <- M.in;
+       }
+       attr(M.out,"adjusted") <- adjusted; 
+       return (M.out);
+     }
+     
+     
+     ##
+     ## z.dist:
+     ## Calculates the p-values for the teststatistics using the mvtnorm-package.
+     ## The 'sides' parameter determines whether the p-values for the one-
+     ## or two-sided test are calculated.
+     ## The statistic is supposed to follow a multivariate t-statistic with
+     ## correlation-matrix 'corr' and 'df' degrees of freedom. If df=0, the
+     ## multivariate normal-distribution is used.
+     ## We use the mvtnorm-package by Frank Bretz (www.bioinf.uni-hannover.de) 
+     ## to calculate the corresponding p-values. These algorithms originally 
+     ## calculate the value P(X<=stat) for the mentioned multivariate distributions, 
+     ## i.e. the 1-sided p-value. In order to gain the 2-sided p-value as well, 
+     ## we used the algorithms on the absolute value of the teststatistic in 
+     ## combination with the inflated correlation-matrix
+     ##   kronecker(matrix(c(1,-1,-1,1),ncol=2), corr)
+     ##
+     z.dist <- function(stat, corr, df=0, sides=2)
+     {
+       if (!mvtnorm) return (NA);
+       
+       if (sides==2)
+       {
+         corr <- kronecker(matrix(c(1,-1,-1,1),ncol=2), corr);
+         stat <- abs(stat);
+       }
+       n <- ncol(corr);
+       sapply(stat, function(arg) 
+       {
+         pmvt(
+           lower=rep(-Inf, n), 
+           upper=rep(arg, n), 
+           df=as.integer(df), 
+           corr=corr, 
+           delta=rep(0,n)
+         )[1];
+       });     
+     } 
+     
+     
+     ##
+     ## z.quantile:
+     ## Calculates the corresponding quantiles of z.dist p-values
+     ## (used for the confidence-intervals)
+     ##
+     z.quantile <- function(p=0.95, start=0, corr, df=0, sides=2)
+     {
+       if (!mvtnorm) return (NA);
+       
+       if (z.dist(start,corr=corr,df=df,sides=sides) < p)
+       {
+         lower <- start;
+         upper <- lower+1;
+         while(z.dist(upper,corr=corr,df=df,sides=sides) < p)
+           upper <- upper+1;
+       }
+       else
+       {
+         upper <- start;
+         lower <- upper-1;
+         while(z.dist(lower,corr=corr,df=df,sides=sides) > p)
+           lower <- lower-1;
+       }
+       ur <- uniroot(f=function(arg) p-z.dist(arg,corr=corr,df=df,sides=sides),
+                     upper=upper, lower=lower
+       );
+       ur$root;
+     }
+     
+     
+     ## Calculations 
+     
+     ## sort the dataset by factor
+     dataset$class <- factor(dataset$class);
+     datord <- order(dataset$class);
+     attrs <- attributes(dataset);
+     dataset <- data.frame(lapply(dataset, "[", datord));
+     attributes(dataset) <- attrs;
+     
+     ## general data characteristics
+     #attach(dataset);
+     fl <- levels(dataset$class);             # factor-levels
+     a <- nlevels(dataset$class);             # number of factor-levels
+     samples <- base::split(dataset$var, dataset$class);    # split the data in separate sample-vectors
+     n <- sapply(samples, length);    # sample sizes
+     #detach(dataset);
+     
+     if (is.null(control))
+     {
+       ## create indexing vectors for the all-pairs situation
+       tmp <- expand.grid(1:a, 1:a);
+       ind <- tmp[[1]] > tmp[[2]];
+       vi <- tmp[[2]][ind];
+       vj <- tmp[[1]][ind];
+     }
+     else
+     {
+       ## create indexing vectors for the many-to-one situation
+       if (!any(fl==control))
+       {
+         msg <- paste("Wrong control-group specification\n",
+                      "The data does not contain a group with factor-level ",
+                      control,
+                      sep="");
+         stop(msg, FALSE);
+       }
+       cg <- which(fl==control);
+       vi <- which((1:a)!=cg);
+       vj <- rep(cg, a-1);
+     }
+     
+     ## number of comparisons ( a*(a-1)/2 for all-pairs, (a-1) for many-to-one )
+     nc <- length(vi);              
+     
+     ## labels describing the compared groups 
+     cmpid <- paste(vi, "-", vj, sep="");
+     
+     ## pairwise pooled sample-sizes
+     gn <- n[vi]+n[vj];
+     
+     ## internal rankings
+     intRanks <- lapply(samples, rank);
+     
+     ## pairwise rankings
+     pairRanks <- lapply(1:nc, function(arg) 
+     {
+       rank(c(samples[[vi[arg]]], samples[[vj[arg]]]));  
+     });
+     
+     ## estimators for the relative effects
+     pd <- sapply(1:nc, function(arg)
+     {
+       i <- vi[arg]; 
+       j <- vj[arg];
+       (sum(pairRanks[[arg]][(n[i]+1):gn[arg]])/n[j]-(n[j]+1)/2)/n[i];  
+     });
+     
+     ## Calculations for the BF-test 
+     ##
+     dij <- dji <- list(0);
+     
+     sqij <- sapply(1:nc, function(arg) 
+     {
+       i <- vi[arg]; 
+       j <- vj[arg];
+       pr <- pairRanks[[arg]][(n[i]+1):gn[arg]];
+       dij[[arg]] <<- pr - sum(pr)/n[j] - intRanks[[j]] + (n[j]+1)/2;
+       ssq(dij[[arg]])/(n[i]*n[i]*(n[j]-1));
+     });
+     
+     sqji <- sapply(1:nc, function(arg)
+     {
+       i <- vi[arg];  
+       j <- vj[arg];
+       pr <- pairRanks[[arg]][1:n[i]];
+       dji[[arg]] <<- pr - sum(pr)/n[i] - intRanks[[i]] + (n[i]+1)/2;
+       ssq(dji[[arg]])/(n[j]*n[j]*(n[i]-1));
+     });
+     
+     ## diagonal elements of the covariance-matrix
+     vd.bf <- gn*(sqij/n[vj] + sqji/n[vi]);
+     
+     ## mark and correct zero variances for further calculations
+     singular.bf <- (vd.bf==0);
+     vd.bf[singular.bf] <- 0.00000001;
+     
+     ## standard-deviation
+     std.bf <- sqrt(vd.bf/gn);
+     
+     ## teststatistic
+     t.bf <- (pd-0.5)*sqrt(gn/vd.bf);
+     
+     ## Satterthwaite approxiamtion for the degrees of freedom
+     df.sw <- (n[vi]*sqij + n[vj]*sqji)^2 / 
+       ((n[vi]*sqij)^2/(n[vj]-1) + (n[vj]*sqji)^2/(n[vi]-1));
+     df.sw[is.nan(df.sw)] <- Inf;
+     
+     ## choose degrees of freedom 
+     df <- if (dfm<3) max(1, if (dfm==2) min(gn-2) else min(df.sw)) else 0;
+     
+     
+     ## Calculations for the Steel-test 
+     ##
+     ## the Steel-type correlation factors
+     lambda <- sqrt(n[vi]/(gn+1));
+     
+     ## diagonal elements of the covariance-matrix
+     vd.st <- sapply(1:nc, function(arg) ssq(pairRanks[[arg]]-(gn[arg]+1)/2)) / 
+       (n[vi]*n[vj]*(gn-1));
+     
+     ## mark and correct zero variances for further calculations
+     singular.st <- (vd.st==0);
+     vd.st[singular.st] <- 0.00000001;
+     
+     ## standard-deviation
+     std.st <- sqrt(vd.st/gn);
+     
+     ## teststatistic
+     t.st <- (pd-0.5)*sqrt(gn/vd.st);
+     
+     
+     ## Calculate the correlation-matrices (for both, BF and Steel) 
+     ##    
+     rho.bf <- rho.st <- diag(nc);
+     for (x in 1:(nc-1))
+     {
+       for (y in (x+1):nc)
+       {
+         i <- vi[x]; j <- vj[x];
+         v <- vi[y]; w <- vj[y];
+         p <- c(i==v, j==w, i==w, j==v);
+         if (sum(p)==1) 
+         {      
+           cl <- list(
+             function()  (t(dji[[x]]) %*% dji[[y]]) / (n[j]*n[w]*n[i]*(n[i]-1)),
+             function()  (t(dij[[x]]) %*% dij[[y]]) / (n[i]*n[v]*n[j]*(n[j]-1)),
+             function() -(t(dji[[x]]) %*% dij[[y]]) / (n[i]*n[w]*n[i]*(n[i]-1)),
+             function() -(t(dij[[x]]) %*% dji[[y]]) / (n[j]*n[v]*n[j]*(n[j]-1))
+           );
+           case <- (1:4)[p];
+           rho.bf[x,y] <- rho.bf[y,x] <- 
+             sqrt(gn[x]*gn[y]) / sqrt(vd.bf[x]*vd.bf[y]) * cl[[case]]()
+           ;
+           rho.st[x,y] <- rho.st[y,x] <- 
+             {if (case>2) -1 else 1}*lambda[x]*lambda[y]
+           ;
+         }
+       }
+     }
+     rho.bf <- force.ps(rho.bf);
+     rho.st <- force.ps(rho.st);
+     
+     
+     ## Calculate the p-values     (BF and Steel) 
+     ##
+     p1s.bf <- 1 - z.dist(t.bf, corr=rho.bf, df=df, sides=1);
+     p2s.bf <- 1 - z.dist(t.bf, corr=rho.bf, df=df, sides=2);
+     
+     p1s.st <- 1 - z.dist(t.st, corr=rho.st, sides=1);
+     p2s.st <- 1 - z.dist(t.st, corr=rho.st, sides=2);
+     
+     
+     ## Calculate the confidence-limits (BF and Steel) 
+     ##
+     z.bf <- z.quantile(1-alpha, corr=rho.bf, df=df, sides=2);
+     lcl.bf <- pd - std.bf*z.bf;
+     ucl.bf <- pd + std.bf*z.bf;
+     
+     z.st <- z.quantile(1-alpha, corr=rho.st, sides=2);
+     lcl.st <- pd - std.st*z.st;
+     ucl.st <- pd + std.st*z.st;
+     
+     
+     ## Output 
+     
+     ## Create the result-datastructures 
+     ##    
+     dataStructure <- data.frame("group index"=1:a, 
+                                 "class level"=fl, 
+                                 "nobs"=n
+     );
+     
+     test.bf <- data.frame("cmp"=cmpid, 
+                           "gn"=gn, 
+                           "effect"=pd,
+                           "lower.cl"=lcl.bf,
+                           "upper.cl"=ucl.bf,
+                           "variance"=vd.bf, 
+                           "std"=std.bf, 
+                           "statistic"=t.bf, 
+                           "p-value 1s"=p1s.bf, 
+                           "p-value 2s"=p2s.bf, 
+                           "zero"=singular.bf
+     ); 
+     
+     test.st <- data.frame("cmp"=cmpid, 
+                           "gn"=gn, 
+                           "effect"=pd, 
+                           "lower.cl"=lcl.st,
+                           "upper.cl"=ucl.st,
+                           "variance"=vd.st, 
+                           "std"=std.st, 
+                           "statistic"=t.st, 
+                           "p-value 1s"=p1s.st, 
+                           "p-value 2s"=p2s.st, 
+                           "zero"=singular.st
+     ); 
+     
+     result <- list("data"=dataset,
+                    "info"=dataStructure, 
+                    "corr"=list("BF"=rho.bf, "Steel"=rho.st),
+                    "test"=list("BF"=test.bf, "Steel"=test.st),
+                    "control"=control,
+                    "df.method"=dfm,
+                    "df"=df,
+                    "alpha"=alpha
+     );
+     
+     class(result) <- "npmc";
+     
+     return (result);
+     
+   }
+ 
+
+ 
+ ### with trend line 
+ krus_BF <- function(data, groups, values, p = 0.05) {
+   stat_kruskal <- NULL
+   stat_BF <- NULL
+   abc_list <- NULL
+   
+   #统计检验
+   for (i in groups) {
+     for (j in values) {
+       
+       #Kruskal-Wallis 检验，整体差异
+       dat <- data[c(i, j)]
+       names(dat) <- c('class', 'var')
+       dat$class <- factor(dat$class)
+       fit <- kruskal.test(var~class, dat)
+       p_value <- fit$p.value
+       
+       #获取 Kruskal-Wallis 检验 p 值
+       if (p_value < 0.001) sig <- '***'
+       else if (p_value >= 0.001 & p_value < 0.01) sig <- '**'
+       else if (p_value >= 0.01 & p_value < 0.05) sig <- '*'
+       else sig <- ''
+       stat_kruskal <- rbind(stat_kruskal, c(paste(i, j, sep = '/'), p_value, sig))
+       
+       #Behrens-Fisher 检验（npmc 包），非参数多重比较
+       BF_test <- npmc(dataset = dat, control=NULL, df = 2, alpha = 0.05)
+       BF <- BF_test$test$BF
+       info <- BF_test$info
+       
+       BF$group <- paste(i, j, sep = '/')
+       for (l in 1:nrow(BF)) {
+         x <- strsplit(as.vector(BF[l,'cmp']), '-')[[1]]
+         BF[l,'class1'] <- rownames(info)[which(info$group.index == x[1])]
+         BF[l,'class2'] <- rownames(info)[which(info$group.index == x[2])]
+       }
+       stat_BF <- rbind(stat_BF, BF[c(12:14, 2:11)])
+       
+       #Behrens-Fisher 检验 p 值矩阵获取
+       stat_p <- BF[c(13, 14, 10)]
+       stat_p1 <- stat_p[c(2, 1, 3)]
+       names(stat_p1)[1:2] <- c('class1', 'class2')
+       stat_p <- rbind(stat_p, stat_p1)
+       stat_p <- dcast(stat_p, class1~class2, value.var = 'p.value.2s')
+       rownames(stat_p) <- stat_p$class1
+       
+       #计算各组中位数
+       abc_ij <- aggregate(dat$var, by = list(dat$class), FUN = mean)
+       abc_ij$group <- i
+       abc_ij$var <- j
+       abc_ij <- abc_ij[c(3, 4, 1, 2)]
+       names(abc_ij) <- c('group', 'var', 'class', 'median')
+       
+       #根据中位数和 p 值，手动添加显著性标记“abc”
+       abc_ij <- abc_ij[order(abc_ij$median, decreasing = TRUE), ]
+       class <- as.vector(abc_ij$class)
+       
+       m = 1; n = 2; l = 1
+       abc_ij[m,'sig'] <- letters[l]
+       while (n < length(class)) {
+         for (n in (m+1):length(class)) {
+           if (stat_p[class[m],class[n]] < p) {
+             abc_ij[n,'sig'] <- letters[l+1]
+             if (n - m != 1) {
+               for (x in (m+1):(n-1)) {
+                 if (stat_p[class[x],class[n]] < p) abc_ij[x,'sig'] <- letters[l]
+                 else abc_ij[x,'sig'] <- paste(letters[l], letters[l+1], sep = '')
+               }
+             }
+             l = l + 1
+             m = n
+             break
+           }
+         }
+       }
+       abc_ij[(m:n),'sig'] <- letters[l]
+       
+       abc_list <- rbind(abc_list, abc_ij)
+     }
+   }
+   
+   #ggplot2 作图，箱线图
+   data <- melt(data[c(groups, values)], id = groups)
+   data <- melt(data, id = c('variable', 'value'))
+   data <- data[c(3, 1, 4, 2)]
+   names(data) <- c('group', 'var', 'class', 'value')
+   
+   data$type <- data$class
+ # data['type'][data['type'] == 4 | data['type'] == 7 | data['type'] == 9] <- 'DI'
+   data['type'][data['type'] == 11 | data['type'] == 12 | data['type'] == 14 | data['type'] == 15 | data['type'] == 17] <- 'SI'
+   
+   value_max <- aggregate(data$value, by = list(data$group, data$var), FUN = max)
+   names(value_max) <- c('group', 'var', 'value')
+   value_max <- merge(value_max, abc_list[-4], by = c('group', 'var'))
+   
+   
+   #cgf
+  # myPalette = c("#dadaeb","#bcbddc","#9e9ac8","#fee08b","#fdae61","#f46d43","#ffffbf","#e6f598","#abdda4","#66c2a5","#3288bd") #si
+   
+   #data$class <- factor(data$class, levels = c("SD","OsF","IsF","4","7","9", "11","12","14","15","17"))
+   #see
+   # myPalette = c('#D9D9D9','#80B1D3','#FDB462','#B0DB67')
+   #data$class <- factor(data$class, levels = c("Sd","Nbc","Bc","Nr"))
+   
+   # myPalette = c("#dadaeb","#fee08b","#fdae61","#f46d43","#ffffbf","#e6f598","#abdda4","#66c2a5","#3288bd") 
+   
+   # data$class <- factor(data$class, levels = c("SD","4","7","9", "11","12","14","15","17"))
+   
+   #cgf without OSF and ISF
+ # myPalette = c("#dadaeb","#fee08b","#fdae61","#f46d43","#ffffbf","#e6f598","#abdda4","#66c2a5","#3288bd") #si
+   
+  # data$class <- factor(data$class, levels = c("SD","4","7","9", "11","12","14","15","17"))
+   
+   #cgf for sd and si
+   myPalette = c("#dadaeb","#ffffbf","#e6f598","#abdda4","#66c2a5","#3288bd") #si
+   
+   data$class <- factor(data$class, levels = c("SD","11","12","14","15","17"))
+   
+   # cgf sd di
+  # myPalette = c("#dadaeb","#fee08b","#fdae61","#f46d43") #si
+   
+   #data$class <- factor(data$class, levels = c("SD","4","7","9"))
+   
+   plot_box_g <- ggplot(data = data, aes(x = class, y = value, fill = class)) +
+     scale_fill_manual(values = myPalette) +
+     facet_grid(. ~ var) + facet_wrap(~ var, scales = "free_y",ncol = 6) +
+     theme(strip.text.x = element_text(margin = margin(3.5,0.50,3.5,0.50,"cm"))) +
+     geom_boxplot(aes(x=class, y=value,group=class),outlier.shape = NA) + 
+     geom_beeswarm(color = "black", size = 0.5, alpha = 0.7,dodge.width = 0.05) +
+     geom_smooth(data = subset(data,type=='SI'), aes(group=1), method = "glm",color = "#225EA8", se=F,alpha = 0.8) +
+     #geom_smooth(data = subset(data,type=='DI'), aes(group=1), method = "glm",color = "#B34300", se=F,alpha = 0.8) +
+    geom_text(data = value_max, aes(label = sig, y = value + 0.05*value), size = 8) +
+     theme_bw()+ ylab("") + xlab('') +
+     theme(legend.position = "none",
+           panel.grid=element_blank()) +
+     theme(text=element_text(size = 25)) +
+     theme(axis.text.x = element_text(size = 25, colour = 'black')) +
+     theme(axis.text.y = element_text(size = 25, colour = 'black')) +
+     theme(strip.background = element_rect(fill="#FFFFFF")) +
+     theme(strip.text.x = element_text(size = 32)) 
+   
+   plot_box_m <- ggplot(data = data, aes(x = class, y = value, fill = class)) +
+     scale_fill_manual(values = myPalette) +
+     facet_grid(. ~ var) + facet_wrap(~ var, scales = "free_y",ncol = 6) +
+     theme(strip.text.x = element_text(margin = margin(3.5,0.50,3.5,0.50,"cm"))) +
+     geom_boxplot(aes(x=class, y=value,group=class)) + geom_beeswarm(color = "black", size = 0.2, alpha = 0.4,dodge.width = 0.05) +
+     stat_summary(data = subset(data,type=='SI'),fun=median, geom="line", aes(group=1), color = "#225EA8", size=1) +
+   #  stat_summary(data = subset(data,type=='DI'),fun=median, geom="line", aes(group=1), color = "#B34300", size=1) +
+   #  geom_text(data = value_max, aes(label = sig, y = value + 0.05*value), size = 8) +
+     theme_bw()+ ylab("") + xlab('') +
+     theme(legend.position = "none",
+           panel.grid=element_blank()) +
+     theme(text=element_text(size = 25)) +
+     theme(axis.text.x = element_text(size = 25, colour = 'black')) +
+     theme(axis.text.y = element_text(size = 25, colour = 'black')) +
+     theme(strip.background = element_rect(fill="#FFFFFF")) +
+     theme(strip.text.x = element_text(size = 32)) 
+   
+   #return
+   stat_kruskal <- data.frame(stat_kruskal, stringsAsFactors = FALSE)
+   names(stat_kruskal) <- c('group', 'kruskal_pvalue', 'sig')
+   stat_kruskal$kruskal_pvalue <- as.numeric(stat_kruskal$kruskal_pvalue)
+   
+   stat_BF[which(stat_BF$p.value.2s < 0.001),'sig.2s'] <- '***'
+   stat_BF[which(stat_BF$p.value.2s >= 0.001 & stat_BF$p.value.2s < 0.01),'sig.2s'] <- '**'
+   stat_BF[which(stat_BF$p.value.2s >= 0.01 & stat_BF$p.value.2s < 0.05),'sig.2s'] <- '*'
+   stat_BF[which(stat_BF$p.value.2s >= 0.05),'sig.2s'] <- ''
+   
+   list(data = value_max, stat = list(kruskal = stat_kruskal, BF_p = stat_BF, BF_abc = abc_list), plot_g = plot_box_g, plot_m = plot_box_m)
+ }
+ 
+# Specify the grouping columns with 'groups', which can be multiple columns; specify the variable columns with 'values', which can be multiple columns; specify the significance level with 'p'.
+# First, define the krus_BF function. Then define the npmc function (download failed, copy the function from github).
+
+# use alpha diversity as an example
+
+ mydata <- read.delim('/Users/chenqiong/Desktop/replot/diversity/alpha/species_alpha.txt',
+                      sep = '\t',stringsAsFactors = FALSE, check.names = FALSE)
+ stat_result <- krus_BF(data = mydata, groups = c('Type'), 
+                        values = c('Bacteria','Fungi','Archaea','Viridiplantae','Metazoa','Viruses'), p = 0.05)
+ 
+#差异分析统计结果
+ View(stat_result$plotdata3)
+ View(stat_result$mydata)
+ stat_result$stat$kruskal
+ stat_result$stat$BF_p # download
+ stat_result$stat$BF_abc
+ 
+ #显著性标记“abc”作图结果
+ stat_result$plot # no line
+ stat_result$plot_m # median
+ stat_result$plot_g # glm
+ stat_result$plot
+ 
+ p1 <- stat_result$plot_g 
+ p2 <- stat_result$plot_m 
+ 
+ # ggsave(filename = '/Users/chenqiong/Desktop/replot/figure 1/cgf.nutrient.m4.pdf', width = 32, height = 10)
+ # ggsave(filename = '/Users/chenqiong/Desktop/replot/figure 1/see.nutrient.pdf', width = 25, height = 12)
+ ggsave(filename = '/Users/chenqiong/Desktop/replot/diversity/alpha/cgf_alpha.pdf', width = 25, height = 10)
+ 
+
+```
+
+## 2.5 Phylogenetic tree for age-response species during 11~17 years
+```{r phylogenetic_tree}
+
+      library(ggtreeExtra)
+      library(ggplot2)
+      library(ggtree)
+      library(treeio)
+      library(ggstar)
+      library(ggnewscale)
+      library(dplyr)
+      library(tidytree)
+      library(ggstar)
+      library(TDbook)
+
+#tr1 <- read.tree('~/Desktop/replot/c_means/species/sp.tar.tree.nwk')
+
+numtip <- length(tr1$tip.label)
+#numtip
+
+dat1 <- data.frame(ID=tr1$tip.label)
+
+write.table(dat1,'~/Desktop/replot/c_means/species/idlabel.sp.txt',
+            sep = '\t', col.names = NA, quote = FALSE)
+
+#plot
+df <- read.delim('~/Desktop/replot/c_means/species/idlabel.sp.txt',stringsAsFactors = FALSE, check.names = FALSE,
+                 header = T, sep = "\t") # included taxon level info
+table(df$phylum)
+table(df$Type)
+table(df$genus)
+nrow(df)
+
+df1 <- subset(df,phylum_a == 'd')
+table(df1$group)
+
+tr <- read.tree('~/Desktop/replot/c_means/species/sp.tar.tree.nwk')
+#dat1 <- read.delim('/Users/chenqiong/Desktop/replot/phylo/idlabel.txt',stringsAsFactors = FALSE, check.names = FALSE,
+#                  header = T, sep = "\t")
+#table(dat1['phylum'])
+
+numtip <- length(tr$tip.label)
+numtip
+
+dat2 <- split(df$ID,df$group)
+#View(dat2)
+
+tr <- groupOTU(tr,dat2)
+
+# col_vector = c('#fafafa','#F9756A','#84CDC0','#3949ab','#039be5','#76A8CA',
+ #              '#7cb342','#fdd835','#fb8c00','#795548','#607d8b','#9e9e9e')
+
+#col_vector = c('#fafafa','#fb8072','#8dd3c7','#f48fb1','#bebada','#80b1d3',
+#              '#fdb462','#b3de69','#fccde5','#bc80bd','#ccebc5','#d9d9d9')
+
+#col_vector = c('#fafafa','#d84315','#00695c','#f9a825','#bdbdbd')
+
+#ggtree(tr1, layout="fan", open.angle=20,size=0.5)
+# ggtree(tr, layout="fan", open.angle=20,size=0.5, aes(color=group))
+
+scale_color_manual(values = c("#E64B35FF","#00A087FF"))
+
+p1 <-  ggtree(tr, layout="fan", open.angle=20,size=0.5, aes(color=group),branch.length = "none") + 
+  geom_treescale(x=2, y=0, fontsize=0, linesize=0.0)  +
+  # geom_tiplab(size=0.8,color="black") +
+  scale_color_manual(values = c('#91CFD6','#FFE296'))
+p1
+View(df)
+
+p2 <- p1 + new_scale_fill() +
+  geom_fruit(data=df,
+             geom=geom_bar,
+             mapping = aes(y=ID, x=long, fill=phylum_a),
+             pwidth = 0.04,
+             stat="identity",
+             orientation="y",
+             position = position_stackx(hexpand = 8.5)) +
+  scale_fill_manual(values = c('#84CDC0','#F9756A','#76A8CA','#FFEF78','#FCAB61',
+                               '#9fa8da','#B375B2','#ABD969','#C6E8C0','#bdbdbd')) 
+
+p2
+
+# a  '#006064','#00838f','#0097a7','#00acc1','#00bcd4','#26c6da','#4dd0e1','#80deea','#b2ebf2'
+# b '#ff5722','#ff7043','#ff8a65','#ffab91','#ffccbc'
+# c '#03a9f4','#29b6f6','#4fc3f7','#81d4fa','#b3e5fc'
+
+p3 <- p2 +  new_scale_fill() +
+  geom_fruit(data=df,
+             geom=geom_bar,
+             mapping = aes(y=ID, x=long, fill=genus_a),
+             pwidth = 0.04,
+             stat="identity",
+             orientation="y",
+             position = position_stackx(hexpand = 9.5)) +
+  scale_fill_manual(values = c('#006064','#00838f','#0097a7','#00acc1','#00bcd4','#26c6da','#4dd0e1','#80deea','#b2ebf2',
+                               '#ff5722','#ff7043','#ff8a65','#ffab91','#ffccbc',
+                               '#03a9f4','#29b6f6','#4fc3f7','#81d4fa','#b3e5fc','#eeeeee')) 
+
+p3
+
+ggsave(filename = '~/Desktop/replot/c_means/species/si.diff_sp_tree.pdf',width = 7,height = 5)
+
+
+ggsave(filename = '~/Desktop/replot/crisper/17.tree.pdf',width = 7,height = 5)
+
+# create legend separately, as the legend from above was kind of ugly
+df <- read.delim('~/Desktop/replot/c_means/species/legend.txt',stringsAsFactors = FALSE, check.names = FALSE,
+                 header = T, sep = "\t")
+df$phylum <- factor(df$phylum, levels = df$phylum) 
+
+
+
+col_vector <- c('#84CDC0','#F9756A','#76A8CA','#FFEF78','#C6E8C0','#9fa8da','#FCAB61','#ABD969','#B375B2','#bdbdbd')
+col_vector <- c('#ff5722','#ff7043','#ff8a65','#ffab91','#ffccbc') 
+col_vector <- c('#03a9f4','#29b6f6','#4fc3f7','#81d4fa','#b3e5fc')
+
+ggbarplot(df, x = "phylum", y = "number",
+          fill = "phylum",               # change fill color by cyl
+          color = "white",            # Set bar border colors to white
+          palette = col_vector,            # jco journal color palett. see ?ggpar
+          # Sort the value in dscending order
+          sort.by.groups = FALSE,     # Don't sort inside each group
+          x.text.angle = 45           # Rotate vertically x axis texts
+) +
+  theme(legend.position = "right",
+        panel.grid=element_blank()) +
+  theme(legend.text=element_text(size=16))
+
+col_vector <- c('#006064','#00838f','#0097a7','#00acc1','#00bcd4','#26c6da','#4dd0e1','#80deea','#b2ebf2')
+
+
+```
+
+
+
+## 2.6 Fuzzy C-means clusters
+```{r c-means}
+# Figure 2B
+library(factoextra)
+library(NbClust)
+
+
+# determine the optimal number of clusters
+#elbow method
+fviz_nbclust(df, kmeans, method = "wss") + 
+  geom_vline(xintercept = 4, linetype = 2) +
+  labs(subtitle = "Elbow method")
+# silhouette method
+fviz_nbclust(df, kmeans, method = "silhouette") +
+  labs(subtitle = "Silhouette method")
+
+# Gap statistic
+# nboot = 50 to keep the function speedy. 
+# recommended value: nboot= 500 for your analysis.
+# Use verbose = FALSE to hide computing progression.
+set.seed(123)
+fviz_nbclust(df, kmeans, nstart = 25,  method = "gap_stat", nboot = 500)+
+  labs(subtitle = "Gap statistic method")
+
+
+df <- na.omit(df)
+nrow(df)
+cm = cmeans(df, center=2, iter.max=200)
+table(cm$cluster)
+cm$cluster = factor(cm$cluster, levels=c(1:length(unique(cm$cluster))))
+
+fviz_cluster(list(data = df, cluster=cm$cluster), 
+             geom = c("point"),
+             ellipse = TRUE,
+             ellipse.alpha = 0.3, #used to be 0.6 if only points are plotted.
+             ellipse.type = "norm",
+             ellipse.level = 0.68,
+             pelette = c('#bf360c','#1b5e20'),
+           # palette = "npg",
+            # scale_fill_manual(values = c("#4DBBD5FF","#E64B35FF","#3C5488FF","#00A087FF")),
+             repel = TRUE) + theme_pubr(base_size = 20)
+
+
+# two clusters
+fviz_cluster(list(data = df_s, cluster=cm$cluster), ellipse = TRUE, ellipse.type = "norm",ellipse.level = 0.68,repel = FALSE, 
+             palette = c('#86C7CF','#FFDE92'), 
+             ggtheme = theme_minimal(), geom = c("point"),
+             legend = "right") + theme_bw() +
+  theme(text=element_text(size = 25))  +
+  theme(axis.text.x = element_text(size = 25,  colour = 'black')) +
+  theme(axis.text.y = element_text(size = 25,colour = 'black')) +
+  theme(axis.title.x = element_blank()) + ylab("Scaled Values") +
+  theme(axis.title.y = element_text(size = 25, colour = 'black')) +
+  theme(legend.position = 'none',panel.grid=element_blank()) 
+
+
+tempp = cbind.data.frame(df, cluster=cm$cluster, membership=apply(cm$membership, 1, max), taxon = row.names(df))
+df.scale.group = tempp[tempp$membership>0.8,]
+table(df.scale.group$cluster)
+length(df.scale.group$cluster)
+df.melt = reshape2::melt(df.scale.group, id.vars = c("cluster","membership", "taxon"))
+
+
+df.melt$variable = factor(df.melt$variable)
+df.melt$cluster = factor(df.melt$cluster)
+
+# write.table(df.scale.group, "~/Desktop/replot/metabo/c-means-si.txt",
+#             sep = '\t', col.names = NA, quote = FALSE)
+
+
+mydata_melt <- df.melt
+mydata_melt$membership <- (mydata_melt$membership-min(mydata_melt$membership))/(max(mydata_melt$membership)-min(mydata_melt$membership))
+
+mydata_melt$variable <- factor(mydata_melt$variable, levels = c("11", "12", "14", "15", "17"))
+
+mydata_melt$cluster <- factor(mydata_melt$cluster, levels = c("1", "2", "3", "4"))
+
+ggplot(mydata_melt, aes(x = variable, y = value, group = taxon)) +
+  geom_line(aes(color=cluster,alpha=membership)) + geom_point(aes(color=cluster)) +
+  scale_color_manual(values = c('#86C7CF','#FFDE92'))  +
+  scale_x_discrete(expand = c(0,0)) +
+  theme(text=element_text(size = 25)) + theme_bw() +
+  theme(axis.text.x = element_text(size = 25, colour = 'black')) +
+  theme(axis.text.y = element_text(size = 25, colour = 'black')) +
+  theme(axis.title.x = element_blank()) + ylab("Scaled Values") +
+  theme(axis.title.y = element_text(size = 25,colour = 'black')) +
+  theme(legend.position = "none",panel.grid=element_blank())
+
+# ggplot(data=df.melt, aes(x=variable, y=value, group=taxon, color=cluster, alpha=membership)) +
+#   #geom_line(stat="smooth", method="loess", alpha=0.7)+
+#   geom_line(size=1.5)+
+#   geom_hline(yintercept = 0, linetype = 2)+
+#   theme_pubr(base_size = 16, x.text.angle = 45) + labs(y="Scaled Values") + 
+#   #guides(alpha=FALSE, size="FALSE") +
+#  # scale_color_npg()+ 
+#   facet_wrap(~cluster, scales="free_y", ncol=4)
+```

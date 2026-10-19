@@ -20,7 +20,7 @@ All analysis code is in `code/`, numbered in run order (later files may use obje
 | `05_lab_weathering_validation.Rmd` | Laboratory validation of sand weathering: F8 incubation experiments |
 | `06_F8_metabolism_siderophore.Rmd` | F8 metabolism and siderophore mechanism: metabolomics, DFOE identification and quantification, *bibC* mutant and overexpression strains |
 | `07_siderophore_field_patterns.Rmd` | Siderophore-associated patterns across the field chronosequence |
-| `08_global_weathering_potential_model_V18.R` | Global comparison assessing environmental suitability for F8-associated weathering across sandy drylands: a relative weathering-potential model parameterized by sand-matrix reactivity, climate suitability, and microbial suitability (the experimentally measured functional response of F8) |
+| `08_global_weathering_potential_model.R` | Global comparison assessing environmental suitability for F8-associated weathering across sandy drylands: a relative weathering-potential model parameterized by sand-matrix reactivity, climate suitability, and microbial suitability (the experimentally measured functional response of F8) |
 
 ## Requirements
 

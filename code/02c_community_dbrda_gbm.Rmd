@@ -1,0 +1,2456 @@
+---
+title: "Desert restoration project -- Part 2c: Community modeling II (dbRDA, gradient boosting)"
+author: "Qiong_Chen"
+date: "2026-08-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+source("00_setup.R")
+```
+
+## 2.11 dbRDA and variation partitioning
+
+```{r dbrda-variation-partitioning}
+#si
+env <- read.delim('/Users/chenqiong/Desktop/replot/glm/full_pred_si_glm_update.txt',
+                  stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
+                  sep = "\t")
+env <- env[,-c(1:2)]
+phy <- env[,1:37]
+tem <- env[,38:45]
+tech <- env[,46]
+
+#di
+
+env <- read.delim('/Users/chenqiong/Desktop/replot/aem/di_env_dbrda_update.txt',
+                  stringsAsFactors = FALSE, check.names = FALSE,header = T,row.names = 1,
+                  sep = "\t") 
+env <- env[,-c(1:2)]
+phy <- env[,1:37]
+tem <- env[,38:43]
+tech <- env[,44]
+
+
+library(vegan)
+
+# Calculate distance matrices for phy and tem dataframes
+phy_dist <- vegdist(phy, method = "bray") # or another distance method, e.g., "bray"
+tem_dist <- vegdist(tem, method = "bray") # or another distance method, e.g., "bray"
+tech_dist <- vegdist(tech, method = "bray")
+
+# Perform Mantel test
+mantel_result_phy_tem <- mantel(phy_dist, tem_dist, method = "pearson", permutations = 999)
+mantel_result_phy_tem
+
+mantel_result_phy_tech <- mantel(phy_dist, tech_dist, method = "pearson", permutations = 999)
+mantel_result_phy_tech
+
+mantel_result_tech_tem <- mantel(tech_dist, tem_dist, method = "pearson", permutations = 999)
+mantel_result_tech_tem
+
+## dbRDA 
+library(vegan)
+library(adespatial)
+
+#metabolite
+species <-  read.delim('/Users/chenqiong/Desktop/replot/metabolite_ymy/si_metabo.txt',
+                       stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
+                       sep = "\t")
+
+env <- read.delim('/Users/chenqiong/Desktop/replot/metabolite_ymy/full_pred_si_glm_update.txt',
+                  stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
+                  sep = "\t")
+species <- species[,-c(1:3)]
+env <- env[,-c(1:3)]
+
+tech <- data.frame(env[,48])
+Env <- data.frame(env[,c(1:37)])
+time <- data.frame(env[,38:47])
+
+species_hel <- decostand(species, method = 'hellinger')
+
+rda.data = species_hel
+
+#rda forward selections of every group, using AEM variables (through RDA axes)
+mod0 = rda(rda.data ~ 1, tech) #model with intercept only
+mod1 = rda(rda.data ~., tech) #model with all variables
+step.res.tech = ordiR2step(mod0, mod1, perm.max =1000) #about 2.3% explained
+
+mod0 = rda(rda.data ~ 1, Env) #model with intercept only
+mod1 = rda(rda.data ~., Env) #model with all variables
+step.res.Env = ordiR2step(mod0, mod1, perm.max =1000) #about 10.3% explained
+step.forward.Env = forward.sel(rda.data, Env)
+
+mod0 = rda(rda.data ~ 1, time) #model with intercept only
+mod1 = rda(rda.data ~., time) #model with all variables
+step.res.time = ordiR2step(mod0, mod1, perm.max =1000) #about 7.13% explained
+step.forward.time = forward.sel(rda.data, time)
+
+mod0 = rda(rda.data ~ 1, time) #model with intercept only
+mod1 = rda(rda.data ~., time) #model with all variables
+step.res.time = ordiR2step(mod0, mod1, perm.max =1000) #about 10.49% explained
+time.R2a = RsquareAdj(mod1)$adj.r.squared
+step.forward.time = forward.sel(rda.data, time, adjR2thresh = time.R2a)
+
+#vegan variable selection procedure for every group, for dbRDA (used in paper)
+#using AEM variables
+mod0.db = capscale(rda.data ~ 1, dist="bray", data=tech, add=TRUE)
+mod1.db = capscale(rda.data ~., dist="bray", data=tech, add=TRUE)
+step.res.db.tech = ordiR2step(mod0.db, mod1.db, perm.max = 1000) #about % explained      
+
+# tech.select.db = tech[, attributes(step.res.db.tech$terms)$term.labels]
+
+colnames(tech) = "batch"
+tech.select.db = tech
+
+mod0.db = capscale(rda.data ~ 1, dist="bray", data=Env, add=TRUE)
+mod1.db = capscale(rda.data ~., dist="bray", data=Env, add=TRUE)
+step.res.db.Env = ordiR2step(mod0.db, mod1.db, perm.max = 1000) #about % explained   
+Env.select.db = Env[, attributes(step.res.db.Env$terms)$term.labels]
+Env.select.db
+
+
+mod0.db = capscale(rda.data ~ 1, dist="bray", data=time, add=TRUE)
+mod1.db = capscale(rda.data ~., dist="bray", data=time, add=TRUE)
+step.res.db.time = ordiR2step(mod0.db, mod1.db, perm.max = 1000) #about % explained   
+time.select.db = time[, attributes(step.res.db.time$terms)$term.labels]
+time.select.db
+#combining all for variable selection
+allfactors = cbind(tech, Env, time) 
+
+mod0.db = capscale(rda.data ~ 1, dist = "bray", data = allfactors) #using add = TRUE option will give different results, more variables
+mod1.db = capscale(rda.data ~., dist = "bray", data = allfactors)
+step.res.db.all = ordiR2step(mod0.db, mod1.db, perm.max = 1000, pin = 0.05) #about % explained  
+all.select.db = allfactors[, attributes(step.res.db.all$terms)$term.labels]
+all.select.db
+
+
+#calculating distance between samples 
+rda.data.dist = vegdist(rda.data,method = "bray",na.rm = TRUE, diag = FALSE)
+#dbRDA varpart, assuming four groups
+dbRDA.MEM.varpart = varpart(rda.data.dist, tech.select.db, Env.select.db, time.select.db)
+dbRDA.MEM.varpart = varpart(rda.data.dist, tech.select.db, time.select.db)
+# not adding AEM for now
+dbRDA.MEM.varpart = varpart(rda.data.dist, technical.select.db, phy.select.db, organ.select.db)
+#lumping location and behavior together, so three groups + temporal group
+dbRDA.MEM.varpart = varpart(rda.data.dist, technical.select.db, env.select.db, locabehav.select.db, temporal.select.db)
+#the techinical is 2.6%, the enviromental, locabehav, and the temporal all account for 10% each.
+par(mfrow = c(1,2))
+showvarparts(4)
+plot(dbRDA.MEM.varpart)
+
+dbRDA.MEM.varpart #show R.square data
+
+ #crude varpart without forward selection of each group
+dbRDA.MEM.crude.varpart1 = varpart(rda.data.dist, tech, Env, time)
+dbRDA.MEM.crude.varpart1
+par(mfrow = c(1,1))
+showvarparts(4)
+plot(dbRDA.MEM.crude.varpart)
+
+
+#testing individual parameters
+env.dbrda.select= envfit(rda.data.dist, cbind(tech.select.db, Env.select.db, time.select.db), na.rm=TRUE) #testin
+env.dbrda= envfit(rda.data.dist, cbind(tech, Env, time), na.rm=TRUE) #testing individual parameters
+env.dbrda
+View(env.dbrda)
+
+#new adonis test
+
+  adonis.result.db = adonis(rda.data ~., cbind(time.select.db, Env.select.db, tech.select.db), perm = 1999, method = "bray")
+  adonis.result.db
+  write.table(adonis.result.db$aov.tab, "~/Desktop/replot/glm/no_ame1/allsamples.adonis.db.update.si.csv", sep = ",", col.names = TRUE, row.names = TRUE, quote = FALSE)
+  
+  adonis.crude.result.db = adonis(rda.data ~., cbind(time, Env, tech), perm = 1999, method = "bray")
+  write.table(adonis.crude.result.db$aov.tab, "/Users/chenqiong/Desktop/replot/glm/allsamples.adonis.crude.db.update.di.1.csv", sep = ",", col.names = TRUE, row.names = TRUE, quote = FALSE)
+  adonis.crude.result.db
+
+  library(Hmisc)
+
+  #total correlation
+  env.recoding = cbind(tech, Env, time)
+  res2 = rcorr(as.matrix(env.recoding), type = "spearman")
+  
+  #takes output from rcorr function, adjusting p value matrix accroding to fdr principles
+  matrixPadjust = function(res, select = c(1:nrow(res$P))){
+    print(select)
+    temp.p = c(res$P)
+    temp.p[is.na(temp.p)] = 0
+    temp.p.adj = p.adjust(temp.p, method = "fdr")
+    p.adj.matrix = matrix(temp.p.adj, nrow = ncol(res$P), ncol=ncol(res$P), dimnames = list(rownames = colnames(res$P), colnames = colnames(res$P)))
+    return(p.adj.matrix)
+  }
+  adjusted.res2.p = matrixPadjust(res2)
+  #pls package also has a function called corrplot
+  corrplot::corrplot(res2$r, order = "hclust", p.mat = adjusted.res2.p, sig.level = 0.01,
+                     insig = "blank", diag = FALSE, tl.cex=1, addrect = 12, method="color", 
+                     outline=TRUE, col=brewer.pal(n=10, name="PuOr"), tl.srt=45, tl.col="black")
+
+
+## GLM 
+  ### Three groups tech, env, time
+  #all.select.db 
+ # imp.data = rda.data[ , order(colSums(rda.data),decreasing=TRUE)] 
+  # imp.data = imp.data[, apply(imp.data, 2, function(x){ sum(x>0)>=100})] #occuring in more than 100 samples
+  library(MuMIn)
+  library(hier.part)
+  library(relaimpo)
+  library(ggtern)
+  library(ggalt)
+  library(vegan)
+  
+  #si updata with metal
+  species <-  read.delim('/Users/chenqiong/Desktop/replot/aem/si_genus_100_rda.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
+                         sep = "\t")
+  
+  env <- read.delim('/Users/chenqiong/Desktop/replot/aem/full_pred_si_genus_rda.txt',
+                    stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
+                    sep = "\t")
+  env <- env[,-c(1:2)]
+  species <- species[,-c(1:2)]
+  species_hel <- decostand(species, method = 'hellinger')
+  rda.data = species_hel
+  imp.data = rda.data
+  all.select.db <- env[,c("AEM50","AEM1","AEM11","AEM4","Median","Moisture","Batch")]
+ # all.select.db <- env[,c("AEM11","Ca","Batch")]
+  
+  
+ imp.df = data.frame(matrix(nrow=12))
+ imp.df = data.frame(matrix(nrow=2))
+  imp.rsq = c()
+  imp.adjrsq = c()
+  imp.p = c()
+  
+  #can only work on 12 variables or less so far, hence cutoff set at 12, the last few are the least important anyway.
+  
+  for (name in colnames(imp.data)){
+    print(name)
+    hier.results = hier.part(rda.data[,name], all.select.db[,1:2], barplot = "FALSE", gof ="Rsqu")
+    lm.fit = lm(rda.data[,name]~., data=all.select.db[,1:2])
+    lm.summary = summary(lm.fit)
+    imp.rsq = c(imp.rsq, lm.summary$r.squared)
+    imp.adjrsq = c(imp.adjrsq, lm.summary$adj.r.squared)
+    imp.df = cbind(imp.df, hier.results$I.perc)
+    print(hier.results$I.perc)
+    imp.p = c(imp.p, pf(lm.summary$fstatistic[1], lm.summary$fstatistic[2], lm.summary$fstatistic[3], lower.tail=F))
+  }
+  imp.df = imp.df[, -1]
+  colnames(imp.df) = colnames(imp.data)
+  imp.df.final = rbind(imp.df, R2 = imp.rsq, adjR2 = imp.adjrsq, p = imp.p)
+  imp.df.final = rbind(imp.df.final, padjust = p.adjust(imp.df.final["p",], method="fdr"))
+  imp.df.fin = t.data.frame(imp.df.final)
+  
+  
+    for (name in colnames(imp.data)){
+      print(name)
+      hier.results = hier.part(rda.data[,name], all.select.db[,1:12], barplot = "FALSE", gof ="Rsqu")
+      lm.fit = lm(rda.data[,name]~., data=all.select.db[,1:12])
+      lm.summary = summary(lm.fit)
+      imp.rsq = c(imp.rsq, lm.summary$r.squared)
+      imp.adjrsq = c(imp.adjrsq, lm.summary$adj.r.squared)
+      imp.df = cbind(imp.df, hier.results$I.perc)
+      print(hier.results$I.perc)
+      imp.p = c(imp.p, pf(lm.summary$fstatistic[1], lm.summary$fstatistic[2], lm.summary$fstatistic[3], lower.tail=F))
+    }
+    imp.df = imp.df[, -1]
+    colnames(imp.df) = colnames(imp.data)
+    imp.df.final = rbind(imp.df, R2 = imp.rsq, adjR2 = imp.adjrsq, p = imp.p)
+    imp.df.final = rbind(imp.df.final, padjust = p.adjust(imp.df.final["p",], method="fdr"))
+    imp.df.fin = t.data.frame(imp.df.final)
+    
+
+    
+    write.csv(file = "/Users/chenqiong/Desktop/replot/glm/fvarpart_v1.csv", x = imp.df.fin)
+  
+  
+    #using calc.relimp from the relaimpo package, no limitation on the number of testing variables imposed
+    library(relaimpo)
+    
+    env <- read.delim('/Users/chenqiong/Desktop/replot/aem/full_pred_si_genus_rda.txt',
+                      stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
+                      sep = "\t")
+    env <- env[,c(3:7,9:13,15:22)]
+    all.select.db <- env[,-c(1:2)]
+    
+  #  all.select.db1 <- data.frame(all.select.db[,-c(2:10)])
+   
+    View(all.select.db)
+    
+    relaimp.df = data.frame(matrix(nrow=ncol(all.select.db)))
+    
+  #  relaimp.df = data.frame(matrix(ncol=1))
+   # relaimp.df = data.frame(matrix(nrow=1))
+    
+    relaimp.rsq = c()
+    relaimp.adjrsq = c()
+    relaimp.p = c()
+    relaimp.var.y = c()
+    
+    for (name in colnames(imp.data)){
+      print(name)
+      lm.fit = lm(rda.data[,name]~., data=all.select.db)
+      lm.rela = calc.relimp(lm.fit, type = c("lmg"), rela = TRUE) #this function actually has a groups option to combine variables into groups
+      relaimp.df = cbind(relaimp.df, lm.rela@lmg)
+      relaimp.var.y = c(relaimp.var.y, lm.rela@var.y)
+      lm.summary = summary(lm.fit)
+      relaimp.rsq = c(relaimp.rsq, lm.summary$r.squared)
+      relaimp.adjrsq = c(relaimp.adjrsq, lm.summary$adj.r.squared)
+      relaimp.p = c(relaimp.p, pf(lm.summary$fstatistic[1], lm.summary$fstatistic[2], lm.summary$fstatistic[3], lower.tail=F))
+    }
+    
+    relaimp.df = relaimp.df[, -1]
+    colnames(relaimp.df) = colnames(imp.data)
+    relaimp.df = relaimp.df * 100
+    relaimp.df.final = rbind(relaimp.df, R2 = relaimp.rsq, adjR2 = relaimp.adjrsq, p = relaimp.p, yvar = relaimp.var.y)
+    relaimp.df.final = rbind(relaimp.df.final, padjust = p.adjust(relaimp.df.final["p",], method="fdr"))
+    relaimp.df.fin = t.data.frame(relaimp.df.final)
+    relaimp.df.fin = as.data.frame(relaimp.df.fin)
+    
+    write.table(relaimp.df.fin, '~/Desktop/replot/glm/no_ame1/fvarpart_si.txt',sep="\t", quote = FALSE)
+
+    relaimp.df.fin_select <- relaimp.df.fin
+ 
+    #updata si
+    mydata <- read.delim('/Users/chenqiong/Desktop/replot/glm/fvarpart_final_si_update_1.txt',
+                         row.names = 1, sep = '\t',stringsAsFactors = FALSE, check.names = FALSE)
+    relaimp.df.fin = mydata[1:562,-c(1:2)]
+    mydata <- mydata[1:562,]
+    table(mydata[,1])
+    
+    #si
+    Env.index = c(2,4,6,9,10,11)
+    time.index = c(1,5,7,8)
+    tech.index = c(3)
+
+    
+    Env.imp = apply(relaimp.df.fin, 1, function(x){sum(x[Env.index])})
+    time.imp = apply(relaimp.df.fin, 1, function(x){sum(x[time.index])})
+    tech.imp = apply(relaimp.df.fin, 1, function(x){sum(x[tech.index])})
+  #  View(time.imp)
+    
+    r2 = as.numeric(relaimp.df.fin$R2)
+    tern.df.raw = cbind.data.frame(Env = as.numeric(Env.imp), Tem = as.numeric(time.imp), 
+                                   Tec = as.numeric(tech.imp), R2 = r2, Padj = relaimp.df.fin$padjust)
+    rownames(tern.df.raw) = rownames(relaimp.df.fin)
+    tern.df.raw = tern.df.raw[as.numeric(tern.df.raw$Padj)< 0.05,]
+    
+  #View(tern.df.raw)
+    
+    tern.df = cbind(Env= as.numeric(Env.imp)/100*r2, Tem=as.numeric(time.imp)/100*r2, 
+                    Tec=as.numeric(tech.imp)/100*r2, R2 = r2, Padj=relaimp.df.fin$padjust)
+    rownames(tern.df) = rownames(relaimp.df.fin)
+    tern.df = as.data.frame(tern.df)
+    tern.df = tern.df[as.numeric(tern.df$Padj)< 0.05,]
+    View(tern.df)
+    
+    tern.df[,1:5] = apply(tern.df[,1:5], 2, as.numeric)
+ 
+    table(tern.df$Taxonomy)
+    
+    tern.df$envir <- tern.df$Env/tern.df$R2
+    tern.df$time <- tern.df$Tem/tern.df$R2
+    tern.archaea <- subset(tern.df, taxonomy==c('Bacteria'))
+    tern.archaea <- subset(tern.df, taxonomy==c('Viridiplantae'))
+    
+    table(tern.archaea$dominating)
+    
+    View(tern.archaea)
+    mean(tern.archaea$envir)
+    mean(tern.archaea$time)
+    
+    tern.df <- tern.df[,1:7] 
+    tern.df <-  tern.df[1:213, ]
+    tern.df$taxonomy = factor(tern.df$taxonomy, levels = c("Bacteria","Fungi", "Archaea","Metazoa","Viridiplantae"))
+    tern.df$dominating = rep("norm", nrow(tern.df))
+    tern.df$dominating[tern.df$Env/tern.df$Tem>=1.5] = "Env"
+    tern.df$dominating[tern.df$Tem/tern.df$Env>=1.5] = "Tem"
+    tern.df$genus <- row.names(tern.df)
+    tern.df <- tern.df[,c("taxonomy","Env", "Tem", "Tec","R2","Padj", "dominating","genus","Phylum")]
+    tern.melt =reshape2:: melt(tern.df, id.vars=c("Env", "Tem", "Tec", "R2","Padj", "dominating","genus","Phylum"))
+    tern.melt$value = factor(tern.melt$value, levels = c("Bacteria",  "Fungi", "Archaea","Metazoa","Viridiplantae"))
+    tern.melt$dominating = factor(tern.melt$dominating, levels = c("norm", "Env","Tem"))
+    View(tern.melt)
+    
+    #metabolite
+    tern.df <- read.delim('/Users/chenqiong/Desktop/replot/metabolite_ymy/glm_di.txt',
+                          row.names = 1, sep = '\t',stringsAsFactors = FALSE, check.names = FALSE)
+    table(tern.df$superclass)
+    
+   
+    tern.df$dominating = rep("norm", nrow(tern.df))
+    tern.df$dominating[tern.df$Env/tern.df$Tem>=1.5] = "Env"
+    tern.df$dominating[tern.df$Tem/tern.df$Env>=1.5] = "Tem"
+    tern.df$meta <- row.names(tern.df)
+    tern.df <- tern.df[,c("superclass","Env", "Tem", "Tec","R2","Padj", "dominating","meta","class")]
+    tern.melt =reshape2:: melt(tern.df, id.vars=c("Env", "Tem", "Tec","R2","Padj", "dominating","meta","class"))
+    tern.melt$dominating = factor(tern.melt$dominating, levels = c("norm", "Env","Tem"))
+    View(tern.melt)
+    
+    
+  #before
+    Env.imp = apply(relaimp.df.fin, 1, function(x){sum(x[Env.index])})
+    time.imp = apply(relaimp.df.fin, 1, function(x){sum(x[time.index])})
+    tech.imp = apply(relaimp.df.fin, 1, function(x){sum(x[tech.index])})
+    View(time.imp)
+   
+    r2 = as.numeric(relaimp.df.fin$R2)
+    nrow(Env.imp)
+    mydata <- mydata[1:562,]
+    mydata <- mydata[1:578,]
+    taxonomy = mydata$Taxonomy
+    phylum = mydata$Phylum
+    tern.df.raw = cbind.data.frame(Env = as.numeric(Env.imp), Tem = as.numeric(time.imp), 
+                                   Tec = as.numeric(tech.imp), R2 = r2, Padj = relaimp.df.fin$padjust, taxonomy = taxonomy, phylum = phylum)
+    rownames(tern.df.raw) = rownames(relaimp.df.fin)
+    tern.df.raw = tern.df.raw[as.numeric(tern.df.raw$Padj)< 0.05,]
+    View(tern.df.raw)
+    
+    tern.df = cbind(Env= as.numeric(Env.imp)/100*r2, Tem=as.numeric(time.imp)/100*r2, 
+                    Tec=as.numeric(tech.imp)/100*r2, R2 = r2, Padj=relaimp.df.fin$padjust, taxonomy = taxonomy,phylum = phylum)
+    rownames(tern.df) = rownames(relaimp.df.fin)
+    tern.df = as.data.frame(tern.df)
+    tern.df = tern.df[as.numeric(tern.df$Padj)< 0.05,]
+    View(tern.df)
+    
+    tern.df[,1:5] = apply(tern.df[,1:5], 2, as.numeric)
+    
+    tern.df$envir <- tern.df$Env/tern.df$R2
+    tern.df$time <- tern.df$Tem/tern.df$R2
+    tern.archaea <- subset(tern.df, taxonomy==c('Bacteria'))
+    tern.archaea <- subset(tern.df, taxonomy==c('Viridiplantae'))
+    
+    table(tern.archaea$dominating)
+    
+    View(tern.archaea)
+    mean(tern.archaea$envir)
+    mean(tern.archaea$time)
+    
+    tern.df <- tern.df[,1:7]
+    tern.df$taxonomy = factor(tern.df$taxonomy, levels = c("Bacteria","Fungi", "Archaea","Metazoa","Viridiplantae"))
+    tern.df$dominating = rep("norm", nrow(tern.df))
+    tern.df$dominating[tern.df$Env/tern.df$Tem>=1.5] = "Env"
+    tern.df$dominating[tern.df$Tem/tern.df$Env>=1.5] = "Tem"
+    tern.df$genus <- row.names(tern.df)
+    tern.melt = melt(tern.df, id.vars=c("Env", "Tem", "Tec", "R2","Padj", "dominating","genus","phylum"))
+    tern.melt$value = factor(tern.melt$value, levels = c("Bacteria",  "Fungi", "Archaea","Metazoa","Viridiplantae"))
+    tern.melt$dominating = factor(tern.melt$dominating, levels = c("norm", "Env","Tem"))
+    View(tern.melt)
+    
+    
+    
+    
+    #update si
+    
+    Env.imp = apply(relaimp.df.fin, 1, function(x){sum(x[Env.index])})
+    time.imp = apply(relaimp.df.fin, 1, function(x){sum(x[time.index])})
+    tech.imp = apply(relaimp.df.fin, 1, function(x){sum(x[tech.index])})
+    View(time.imp)
+    
+    r2 = as.numeric(relaimp.df.fin$R2)
+    nrow(Env.imp)
+    mydata <- mydata[1:562,]
+    mydata <- mydata[1:578,]
+    taxonomy = mydata$Taxonomy
+    phylum = mydata$Phylum
+    tern.df.raw = cbind.data.frame(Env = as.numeric(Env.imp), Tem = as.numeric(time.imp), 
+                                   Tec = as.numeric(tech.imp), R2 = r2, Padj = relaimp.df.fin$padjust)
+    rownames(tern.df.raw) = rownames(relaimp.df.fin)
+    tern.df.raw = tern.df.raw[as.numeric(tern.df.raw$Padj)< 0.05,]
+    View(tern.df.raw)
+    
+    tern.df = cbind(Env= as.numeric(Env.imp)/100*r2, Tem=as.numeric(time.imp)/100*r2, 
+                    Tec=as.numeric(tech.imp)/100*r2, R2 = r2, Padj=relaimp.df.fin$padjust)
+    rownames(tern.df) = rownames(relaimp.df.fin)
+    tern.df = as.data.frame(tern.df)
+    tern.df = tern.df[as.numeric(tern.df$Padj)< 0.05,]
+    View(tern.df)
+    
+    tern.df[,1:5] = apply(tern.df[,1:5], 2, as.numeric)
+    write.table(tern.df, '/Users/chenqiong/Desktop/replot/glm/glm_si.txt', 
+                sep = '\t', row.names = T, quote = FALSE)
+    
+    tern.df <- read.delim('/Users/chenqiong/Desktop/replot/glm/glm_si.txt',
+                         row.names = 1, sep = '\t',stringsAsFactors = FALSE, check.names = FALSE)
+    table(tern.df$taxonomy)
+    
+    tern.df$envir <- tern.df$Env/tern.df$R2
+    tern.df$time <- tern.df$Tem/tern.df$R2
+    tern.archaea <- subset(tern.df, taxonomy==c('Bacteria'))
+    tern.archaea <- subset(tern.df, taxonomy==c('Viridiplantae'))
+    
+    table(tern.archaea$dominating)
+    
+    View(tern.archaea)
+    mean(tern.archaea$envir)
+    mean(tern.archaea$time)
+    
+    tern.df <- tern.df[,1:7]
+    tern.df$taxonomy = factor(tern.df$taxonomy, levels = c("Bacteria","Fungi", "Archaea","Metazoa","Viridiplantae"))
+    tern.df$dominating = rep("norm", nrow(tern.df))
+    tern.df$dominating[tern.df$Phy_Che/tern.df$Tem>=1.5] = "Phy_Che"
+    tern.df$dominating[tern.df$Tem/tern.df$Phy_Che>=1.5] = "Tem"
+    tern.df$genus <- row.names(tern.df)
+    tern.melt =reshape2:: melt(tern.df, id.vars=c("Phy_Che", "Tem", "Tec", "R2","Padj", "dominating","genus","phylum"))
+    tern.melt$value = factor(tern.melt$value, levels = c("Bacteria",  "Fungi", "Archaea","Metazoa","Viridiplantae"))
+    tern.melt$dominating = factor(tern.melt$dominating, levels = c("norm", "Phy_Che","Tem"))
+    View(tern.melt)
+    
+  #  '#F78F8A','#DCCF82','#FCD8F8','#BFF0F0','#BFEECD'
+    #original
+    ggtern(tern.melt,aes(Phy_Che,Tem,Tec, size=R2, color=value, group=value, fill=value)) + 
+      geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+      geom_point(alpha=0.7) +
+      #geom_encircle(alpha=0.1,size=1) +
+      theme_bw(base_size = 20)  +
+      theme_showarrows() + 
+      theme_notitles() +
+      guides(shape="none") +
+      scale_color_manual(values=c('#F78F8A','#DCCF82','#FCD8F8','#BFF0F0','#BFEECD'))+
+      scale_fill_manual(values=c('#F78F8A','#DCCF82','#FCD8F8','#BFF0F0','#BFEECD'))
+      
+    facet_wrap( ~ value,scales="free", ncol=3) 
+    
+    ggsave(filename = "/Users/chenqiong/Desktop/replot/glm/si_all_king.pdf",width = 7,height = 5.5) 
+    
+    #introducing dominating influences
+    ggtern(tern.melt,aes(Env,Tem,Tec, size=R2, color=dominating, group=value)) + 
+      geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+      geom_point(alpha=0.9) +
+      #geom_encircle(alpha=0.1,size=1) +
+      theme_bw(base_size = 30)  +
+      theme_showarrows() + 
+      theme_notitles() +
+      guides(shape="none") +
+      scale_color_manual(values=c("#d9d9d9","#ffffb3","#8dd3c7"))+
+      scale_fill_manual(values=c("#d9d9d9","#ffffb3","#8dd3c7"))+
+      facet_wrap( ~ value,scales="free", ncol=5) 
+    
+    ggtern(tern.melt,aes(Env,Tem,Tec, size=R2, color=dominating, group=value)) + 
+      geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+      geom_point(alpha=0.6) +
+      #geom_encircle(alpha=0.1,size=1) +
+      theme_bw(base_size = 30)  +
+      theme_showarrows() + 
+      theme_notitles() +
+      guides(shape="none") +
+      scale_color_manual(values=c("#738192","#E5BF49","#3AB1A6"))+
+      scale_fill_manual(values=c("#738192","#E5BF49","#3AB1A6"))+
+      facet_wrap( ~ value,scales="free", ncol=5) +
+      theme(strip.text.x = element_text(margin = margin(0.50,0.20,0.50,0.20,"cm"))) +
+      theme(strip.background = element_rect(fill="#FFFFFF")) +
+      theme(strip.text.x = element_text(size = 30)) 
+   
+    #"#738192","#E5BF49","#3AB1A6"
+
+    ggsave(filename = "~/Desktop/replot/glm/tri_si_1.pdf",width = 30,height = 6) 
+    
+    # separate as different kingdom
+    # archaea
+    df <- subset(tern.melt, value == "Archaea")
+    View()
+  p1 <-  ggtern(df[-8,],aes(Phy_Che,Tem,Tec, size=R2, color=dominating, group=value,shape=phylum)) + 
+      geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+      geom_point(alpha=0.5) +
+      #geom_encircle(alpha=0.1,size=1) +
+      theme_bw(base_size = 20)  +
+      theme_showarrows() +
+      theme_notitles() +
+     # guides(shape="none") 
+      scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+      scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+      scale_shape_manual(values = c(16, 18)) + 
+      scale_size_continuous(limits = c(0, 1)) 
+  p1
+  
+  #bacteria  
+  df <- subset(tern.melt, value == "Bacteria")
+  table(df$dominating)
+  write.table(df, '~/Desktop/replot/glm/bacteria_glm.txt',sep="\t", quote = FALSE)
+  mydata <- read.delim('~/Desktop/replot/glm/bacteria_glm.txt',
+                       stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                       header = T, sep = "\t")
+  table(subset(tern.melt, value == 'Bacteria'&phylum == 'Actinobacteria')$dominating)
+  
+  View(bacteria)
+  table(bacteria$dominating)
+  bacteria$Shape = c(rep('a',166),rep('Chloroflexi',5),rep('Cyanobacteria',17),rep('a',178))
+  env_do <- data.frame(bacteria$Env/bacteria$Tem)
+  env_do$genus <- bacteria$genus
+  View(env_do)
+  
+  time_do <- data.frame(bacteria$Tem/bacteria$Env)
+  time_do$genus <- bacteria$genus
+  View(time_do)
+  
+  p2 <-  ggtern(mydata,aes(Phy_Che,Tem,Tec, size=R2, color=dominating, group=value)) + 
+    geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+    geom_point(alpha=0.5) +
+    #geom_encircle(alpha=0.1,size=1) +
+    theme_bw(base_size = 20)  +
+    theme_showarrows() +
+    theme_notitles() +
+    # guides(shape="none") 
+    scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+    scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+  # scale_shape_manual(values = c(10, 10,18,10)) + 
+    scale_size_continuous(limits = c(0, 1)) 
+  p2
+  
+ 
+    
+  #fungi
+  df <- subset(tern.melt, value == "Fungi")
+    p3 <-  ggtern(df[-8,],aes(Phy_Che,Tem,Tec, size=R2, color=dominating, group=value,shape=phylum)) + 
+      geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+      geom_point(alpha=0.5) +
+      #geom_encircle(alpha=0.1,size=1) +
+      theme_bw(base_size = 20)  +
+      theme_showarrows() +
+      theme_notitles() +
+      # guides(shape="none") 
+      scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+      scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+      scale_shape_manual(values = c(16, 18)) + 
+      scale_size_continuous(limits = c(0.1, 0.6)) 
+    p3
+    
+    # metazoa
+    #bacteria  
+    df <- subset(tern.melt, value == "Metazoa")
+    View()
+    table(metazoa$phylum)
+    
+    env_do_animal <- data.frame(metazoa$Env/metazoa$Tem)
+    env_do_animal$genus <- metazoa$genus
+    View(env_do_animal)
+    
+    time_do_animal <- data.frame(metazoa$Tem/metazoa$Env)
+    time_do_animal$genus <- metazoa$genus
+    View(time_do_animal)
+    p4 <-  ggtern(df,aes(Phy_Che,Tem,Tec, size=R2, color=dominating, group=value)) + 
+      geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+      geom_point(alpha=0.5) +
+      #geom_encircle(alpha=0.1,size=1) +
+      theme_bw(base_size = 20)  +
+      theme_showarrows() + 
+      theme_notitles() +
+      guides(shape="none") +
+      scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+      scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+      #  scale_shape_manual(values = c(24,16,18,24)) + 
+      scale_size_continuous(limits = c(0, 1))
+    
+    p4
+ 
+    p4 <-  ggtern(subset(tern.melt, value == "Metazoa"),aes(Env,Tem,Tec, size=R2, color=dominating, group=value)) + 
+      geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+      geom_point(alpha=0.5) +
+      #geom_encircle(alpha=0.1,size=1) +
+      theme_bw(base_size = 20)  +
+      theme_showarrows() +
+      theme_notitles() +
+      # guides(shape="none") 
+      scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+      scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+      # scale_shape_manual(values = c(16, 18,24)) + 
+      scale_size_continuous(limits = c(0.1, 0.6)) 
+    
+    p4 <-  ggtern(subset(tern.melt, value == "Metazoa"),aes(Env,Tem,Tec, size=R2, color=dominating, group=value)) + 
+      geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+      geom_point(alpha=0.5) +
+      #geom_encircle(alpha=0.1,size=1) +
+      theme_bw(base_size = 20)  +
+      theme_showarrows() +
+      theme_notitles() +
+      # guides(shape="none") 
+      scale_color_manual(values=c("#E8C639","#3AB9B0"))+
+      scale_fill_manual(values=c("#E8C639","#3AB9B0"))+
+      # scale_shape_manual(values = c(16, 18,24)) + 
+      scale_size_continuous(limits = c(0.1, 0.6)) 
+    p4
+    
+    
+    # plant
+    df <- subset(tern.melt, value == "Viridiplantae")
+    p5 <-  ggtern(df[-4,],aes(Phy_Che,Tem,Tec, size=R2, color=dominating, group=value, shape = phylum)) + 
+      geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+      geom_point(alpha=0.5) +
+      #geom_encircle(alpha=0.1,size=1) +
+      theme_bw(base_size = 20)  +
+      theme_showarrows() +
+      theme_notitles() +
+      # guides(shape="none") 
+      scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+      scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+     scale_shape_manual(values = c(16, 18)) + 
+      scale_size_continuous(limits = c(0, 1)) 
+    p5
+    
+    p5 <-  ggtern(subset(tern.melt, value == "Viridiplantae"),aes(Env,Tem,Tec, size=R2, color=dominating, group=value)) + 
+      geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+      geom_point(alpha=0.5) +
+      #geom_encircle(alpha=0.1,size=1) +
+      theme_bw(base_size = 20)  +
+      theme_showarrows() +
+      theme_notitles() +
+      # guides(shape="none") 
+      scale_color_manual(values=c("#6E7D92","#3AB9B0"))+
+      scale_fill_manual(values=c("#6E7D92","#3AB9B0"))+
+      # scale_shape_manual(values = c(16, 18)) + 
+      scale_size_continuous(limits = c(0, 1)) 
+    
+    p1
+    
+    ggsave(filename='~/Desktop/replot/glm/aec_si.pdf',width = 7,height = 5)
+    
+    library(patchwork)
+    p1 + p2 + p3 + p4 + p5 + plot_layout(ncol = 5) 
+    
+    p2 + p3 + p1 + p4 + p5 + plot_layout(ncol = 5) 
+    
+     ## GLM test bootstrapping
+    library(MuMIn)
+    library(hier.part)
+    library(relaimpo)
+    library(ggtern)
+    library(ggalt)
+    library(vegan)
+    
+    ### Three groups technical, env, locabehav
+    #all.select.db 
+    #si
+    species <-  read.delim('/Users/chenqiong/Desktop/replot/aem/si_genus_100_rda.txt',
+                           stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
+                           sep = "\t")
+    species <- species[,-c(1:2)]
+    species_hel <- decostand(species, method = 'hellinger')
+    rda.data = species_hel
+    imp.data = rda.data[ , order(colSums(rda.data),decreasing=TRUE)] 
+    imp.data = imp.data[, apply(imp.data, 2, function(x){ sum(x>0)>=100})] #occuring in more than 100 samples
+    input <- read.delim('~/Desktop/replot/glm/fvarpart_final_si_update_1.txt',
+                        stringsAsFactors = FALSE, check.names = FALSE,
+                        header = T, sep = "\t") 
+    input <- read.delim('~/Desktop/replot/glm/boots/fvarpart_final_si_update.txt',
+                        stringsAsFactors = FALSE, check.names = FALSE,
+                        header = T, sep = "\t") 
+    env <- read.delim('/Users/chenqiong/Desktop/replot/glm/full_pred_si_glm_update.txt',
+                      stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
+                      sep = "\t")
+    all.select.db <- env[,c('AEM1','AEM23','AEM20','AEM2','AEM47','AEM4','Moisture','Mn','Ti','EC','C:P','Ks','C:N','Batch')]
+    
+    all.select.db <- env[,c('Ks','AEM1','Mn','AEM23','Moisture','Batch','AEM20','Ti','AEM2','EC','AEM47','C:P','AEM4','C:N')]
+    
+    #di
+    env <- read.delim('/Users/chenqiong/Desktop/replot/aem/di_env_dbrda_update.txt',
+                      stringsAsFactors = FALSE, check.names = FALSE,header = T,row.names = 1,
+                      sep = "\t")  # all env for forward selection
+    all.select.db <- env[,c('AEM50','AEM1','AEM11','AEM4','Median','Moisture','Batch')]
+    species <-  read.delim('/Users/chenqiong/Desktop/replot/aem/di_genus_aem.txt',
+                           stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
+                           sep = "\t")
+    species <- species[,-c(1:2)]
+    species_hel <- decostand(species, method = 'hellinger')
+    rda.data = species_hel
+    imp.data = rda.data[ , order(colSums(rda.data),decreasing=TRUE)] 
+    imp.data = imp.data[, apply(imp.data, 2, function(x){ sum(x>0)>=100})] #occuring in more than 100 samples
+    input <- read.delim('~/Desktop/replot/glm/fvarpart_final_di_update_1.txt',
+                        stringsAsFactors = FALSE, check.names = FALSE,
+                        header = T, sep = "\t") 
+    
+    
+    
+    #using calc.relimp from the relaimpo package, no limitation on the number of testing variables imposed
+    
+    cicalc = function(delta, ref){ #90% confidence interval
+      delta = sort(delta)
+      range = quantile(delta, c(0.05, 0.95))
+      ratio.ci = as.numeric(ref) - as.numeric(c(range[2], range[1]))
+      names(ratio.ci) = c("5%", "95%")
+      names(ref) = "reference"
+      return(c(ref, ratio.ci))
+    }
+    
+    ecdf_fun = function(x,perc) {ecdf(x)(perc)} #retrun percentile given value in a distribution
+    
+    
+    #This part takes a lot of time, about 20 hours, result is saved as a rds object
+    relaimp.df = data.frame(matrix(nrow=3))
+    relaimp.rsq = c()
+    relaimp.adjrsq = c()
+    relaimp.p = c()
+    relaimp.var.y = c()
+    ratio.master = list()
+    
+    #si
+    for (name in as.character(input$X[input$padjust<0.05])){ #only on genera that occured in more than 100 samples
+      #name="Stereum"
+      print(name)
+      lm.fit = lm(rda.data[,name]~., data=all.select.db)
+      lm.rela = calc.relimp(lm.fit, type = c("lmg"), rela = TRUE, groups = list(spa=c(8,9,13)+1,env= c(1,2,3,4,5,6,10,11,12)+1,tech=c(7)+1)) #this function actually has a groups option to combine variables into groups
+      #group 1 is env, group 2 is spa, group 3 is tech
+      reference.temp = lm.rela@lmg
+      #relaimp.df = cbind(relaimp.df, lm.rela@lmg)
+      relaimp.var.y = c(relaimp.var.y, lm.rela@var.y)
+      lm.summary = summary(lm.fit)
+      relaimp.rsq = c(relaimp.rsq, lm.summary$r.squared)
+      relaimp.adjrsq = c(relaimp.adjrsq, lm.summary$adj.r.squared)
+      refratio = reference.temp[1]/reference.temp[2]
+      refenv = reference.temp[1]
+      refloc = reference.temp[2]
+      reftech = reference.temp[3]
+      
+      data.slice = rda.data[,name]
+      set.seed = 123
+      bootstrapping.matrix = replicate(200, sample(1:114, 114, replace = TRUE)) #each COLUMN is a sampling
+      relaimp.df.temp = data.frame(matrix(nrow=3))
+      #relaimp.var.y.temp = c()
+      for (i in 1:ncol(bootstrapping.matrix)){
+        #print(i)
+        rda.data.temp = data.slice[bootstrapping.matrix[,i]]
+        all.select.db.temp = all.select.db[bootstrapping.matrix[,i],]
+        lm.fit.temp = lm(rda.data.temp~., data=all.select.db.temp)
+        lm.rela.temp = calc.relimp(lm.fit.temp, type = c("lmg"), rela = TRUE, groups = list(spa=c(8,9,13)+1,env= c(1,2,3,4,5,6,10,11,12)+1,tech=c(7)+1))  #this function actually has a groups option to combine variables into groups
+        relaimp.df.temp = cbind(relaimp.df.temp, lm.rela.temp@lmg)
+        #relaimp.var.y.temp = c(relaimp.var.y.temp, lm.rela.temp@var.y)
+      }
+      relaimp.df.temp = relaimp.df.temp[,-1]
+      resample.ratio = unlist(relaimp.df.temp[1,]/relaimp.df.temp[2,])
+      resample.env = unlist(relaimp.df.temp[1,])
+      resample.loc = unlist(relaimp.df.temp[2,])
+      resample.tech = unlist(relaimp.df.temp[3,])
+      
+      deltaratio = refratio - resample.ratio
+      deltaenv =refenv - resample.env
+      deltaloc = refloc - resample.loc
+      deltatech = reftech - resample.tech
+      
+      #range = quantile(deltaratio.sort, c(0.05, 0.95))
+      #ratio.ci = as.numeric(refratio) - as.numeric(c(range[2], range[1]))
+      #names(ratio.ci) = c("5%", "95%")
+      #names(refratio) = "reference"
+      #ratio.ci
+      ratio.master[[name]] = data.frame(ratio = cicalc(deltaratio, refratio),
+                                        env = cicalc(deltaenv, refenv),
+                                        loc = cicalc(deltaloc, refloc),
+                                        tech = cicalc(deltatech, reftech),
+                                        onequantile = ecdf_fun(resample.ratio,1) #quantile of probability of env/loc <= 1
+      )
+    }
+    
+    
+    #di
+    for (name in as.character(input$X[input$padjust<0.05])){ #only on genera that occured in more than 100 samples
+      #name="Stereum"
+      print(name)
+      lm.fit = lm(rda.data[,name]~., data=all.select.db)
+      lm.rela = calc.relimp(lm.fit, type = c("lmg"), rela = TRUE, groups = list(env= c(5,6)+1, spa=c(1,2,3,4)+1, tech=c(7)+1)) #this function actually has a groups option to combine variables into groups
+      #group 1 is env, group 2 is spa, group 3 is tech
+      reference.temp = lm.rela@lmg
+      #relaimp.df = cbind(relaimp.df, lm.rela@lmg)
+      relaimp.var.y = c(relaimp.var.y, lm.rela@var.y)
+      lm.summary = summary(lm.fit)
+      relaimp.rsq = c(relaimp.rsq, lm.summary$r.squared)
+      relaimp.adjrsq = c(relaimp.adjrsq, lm.summary$adj.r.squared)
+      refratio = reference.temp[1]/reference.temp[2]
+      refenv = reference.temp[1]
+      refloc = reference.temp[2]
+      reftech = reference.temp[3]
+      
+      data.slice = rda.data[,name]
+      set.seed = 123
+      bootstrapping.matrix = replicate(9999, sample(1:79, 79, replace = TRUE)) #each COLUMN is a sampling
+      relaimp.df.temp = data.frame(matrix(nrow=3))
+      #relaimp.var.y.temp = c()
+      for (i in 1:ncol(bootstrapping.matrix)){
+        #print(i)
+        rda.data.temp = data.slice[bootstrapping.matrix[,i]]
+        all.select.db.temp = all.select.db[bootstrapping.matrix[,i],]
+        lm.fit.temp = lm(rda.data.temp~., data=all.select.db.temp)
+        lm.rela.temp = calc.relimp(lm.fit.temp, type = c("lmg"), rela = TRUE, groups = list(env= c(5,6)+1, spa=c(1,2,3,4)+1, tech=c(7)+1))  #this function actually has a groups option to combine variables into groups
+        relaimp.df.temp = cbind(relaimp.df.temp, lm.rela.temp@lmg)
+        #relaimp.var.y.temp = c(relaimp.var.y.temp, lm.rela.temp@var.y)
+      }
+      relaimp.df.temp = relaimp.df.temp[,-1]
+      resample.ratio = unlist(relaimp.df.temp[1,]/relaimp.df.temp[2,])
+      resample.env = unlist(relaimp.df.temp[1,])
+      resample.loc = unlist(relaimp.df.temp[2,])
+      resample.tech = unlist(relaimp.df.temp[3,])
+      
+      deltaratio = refratio - resample.ratio
+      deltaenv =refenv - resample.env
+      deltaloc = refloc - resample.loc
+      deltatech = reftech - resample.tech
+      
+      #range = quantile(deltaratio.sort, c(0.05, 0.95))
+      #ratio.ci = as.numeric(refratio) - as.numeric(c(range[2], range[1]))
+      #names(ratio.ci) = c("5%", "95%")
+      #names(refratio) = "reference"
+      #ratio.ci
+      ratio.master[[name]] = data.frame(ratio = cicalc(deltaratio, refratio),
+                                        env = cicalc(deltaenv, refenv),
+                                        loc = cicalc(deltaloc, refloc),
+                                        tech = cicalc(deltatech, reftech),
+                                        onequantile = ecdf_fun(resample.ratio,1) #quantile of probability of env/loc <= 1
+      )
+    }
+    #saveRDS(object = ratio.master, file = "~/Documents/Revision2/bootstrapping.rds")
+    ratio.master = readRDS(file =  "~/Documents/Revision2/bootstrapping.rds")
+    
+    
+    #extracting all information pertaining different group of variables
+    moreenv = c()
+    moreloc = c()
+    rest = c()
+    allquantile = c()
+    allratio = c()
+    allratioupper = c()
+    allratiolower = c()
+    allenv = c()
+    allenvupper = c()
+    allenvlower = c()
+    allloc = c()
+    alllocupper = c()
+    allloclower = c()
+    alltech = c()
+    alltechupper = c()
+    alltechlower = c()
+    #chance of observing env/loc <= 1 in bootstrapping samples
+    for(speciesname in names(ratio.master)){
+      allquantile = c(allquantile, ratio.master[[speciesname]]$onequantile[1])
+      allratio = c(allratio, ratio.master[[speciesname]]$ratio[1])
+      allratiolower = c(allratiolower, ratio.master[[speciesname]]$ratio[2])
+      allratioupper = c(allratioupper, ratio.master[[speciesname]]$ratio[3])
+      
+      allenv = c(allenv, ratio.master[[speciesname]]$env[1])
+      allenvlower =c(allenvlower, ratio.master[[speciesname]]$env[2])
+      allenvupper = c(allenvupper, ratio.master[[speciesname]]$env[3])
+      
+      allloc = c(allloc, ratio.master[[speciesname]]$loc[1])
+      allloclower =c(allloclower, ratio.master[[speciesname]]$loc[2])
+      alllocupper = c(alllocupper, ratio.master[[speciesname]]$loc[3])
+      
+      alltech = c(alltech, ratio.master[[speciesname]]$tech[1])
+      alltechlower =c(alltechlower, ratio.master[[speciesname]]$tech[2])
+      alltechupper = c(alltechupper, ratio.master[[speciesname]]$tech[3])
+      
+      temp.value = ratio.master[[speciesname]]$onequantile[1]
+      if (temp.value >= 0.8) {
+        print(temp.value)
+        moreloc = c(moreloc, speciesname)} else if (temp.value <= 0.2) {
+          print(temp.value)
+          moreenv = c(moreenv, speciesname)} else {rest = c(rest, speciesname)}
+    }
+    #relaimp.rsq = c()
+    #relaimp.adjrsq = c()
+    #relaimp.p = c()
+    #relaimp.var.y = c()
+    
+    taxinfo = read.csv("~/Documents/Expo_paper/fvarpart_final_v3.csv") #contains phylum info
+    quantile.df.report = data.frame(name = names(ratio.master),  #for paper tables
+                                    Prob_of_spa_dominating = allquantile,
+                                    #chance of observing env/loc <= 1 in bootstrapping samples
+                                    env_spa_ratio = allratio,
+    
+                                    ratioupper = allratioupper,
+                                    ratiolower = allratiolower,
+                                    env = allenv,
+                                    envupper = allenvupper,
+                                    envlower = allenvlower,
+                                    spa = allloc,
+                                    spaupper = alllocupper,
+                                    spalower = allloclower,
+                                    tech = alltech,
+                                    techupper = alltechupper,
+                                    techlower = alltechlower,
+                                    rsq = relaimp.rsq,
+                                    adjrsq = relaimp.adjrsq)
+    
+                           #         taxon = input$tax[match(names(ratio.master),input$X)]
+ #   )
+    View(quantile.df.report.si)
+  #  quantile.df.report$phylum = taxinfo$phylum[match(quantile.df.report$name, taxinfo$X)]
+   # write.csv(file = "~/Desktop/replot/glm/", x = quantile.df.report) #contains all relevant information for confidence interval estimation, dominating influence definition, and ternary plots
+    
+    write.table(quantile.df.report.si, '~/Desktop/replot/glm/boots/quantile.df.report.si_f_tem.txt', 
+                sep = '\t', row.names = TRUE, quote = FALSE)
+    
+    quantile.df = data.frame(name = names(ratio.master), 
+                             onequantile = allquantile,#chance of observing env/loc <= 1 in bootstrapping samples
+                             ratio = allratio,
+                             ratioupper = allratioupper,
+                             ratiolower = allratiolower,
+                             rsq = relaimp.rsq,
+                             adjrsq = relaimp.adjrsq,
+                             vary = relaimp.var.y)
+                        #     taxon = input$tax[match(names(ratio.master),input$X)]
+  #  )
+    #saveRDS(quantile.df, file= "~/Documents/Revision2/quantile.df.rds") # simplied format of the quantile.df.report          
+ #   taxinfo = read.csv("~/Documents/Expo_paper/fvarpart_final_v3.csv") #contains phylum info
+  #  quantile.df$phylum = taxinfo$phylum[match(quantile.df$name, taxinfo$X)]
+   # quantile.df = quantile.df[order(quantile.df$adjrsq,decreasing =TRUE),]
+    #quantile.df.select = quantile.df[1:199,] #taking all significant models
+    #View(quantile.df.select)
+    write.table(quantile.df, '~/Desktop/replot/glm/boots/quantile.df.report.si.f.tem.txt', 
+                sep = '\t', row.names = TRUE, quote = FALSE)
+    quantile.df.select = read.delim("~/Desktop/replot/glm/quantile.df.report.si.1.txt",
+                       sep = '\t',stringsAsFactors = FALSE,header = TRUE,
+                       check.names = FALSE)
+    
+    View(subset(quantile.df.select, taxon == "fungi"))
+    #chance of observing env/loc <= 1 in bootstrapping samples
+    View(subset(quantile.df.select, onequantile >= 0.9 & taxon == "fungi")) #new definition of dominating envriomnetal
+    View(subset(quantile.df.select, onequantile <= 0.1 & taxon == "fungi")) #new definition of dominating spatial
+    #find quantile of certain value
+    View(subset(quantile.df.select, onequantile >= 0.9 & taxon == "bacteria")) #new definition of dominating envriomnetal
+    View(subset(quantile.df.select, onequantile <= 0.1 & taxon == "bacteria"))
+    
+    View(subset(quantile.df.select, onequantile >= 0.9 & taxon == "plant")) #new definition of dominating envriomnetal
+    View(subset(quantile.df.select, onequantile <= 0.1 & taxon == "plant"))
+    
+    View(subset(quantile.df.select, onequantile >= 0.9 & taxon == "animal")) #new definition of dominating envriomnetal
+    View(subset(quantile.df.select, onequantile <= 0.1 & taxon == "animal"))
+    
+    
+    View(subset(quantile.df.select, onequantile >= 0.9 & taxon == "Archaea")) #new definition of dominating envriomnetal
+    View(subset(quantile.df.select, onequantile <= 0.1 & taxon == "Archaea"))
+    
+    #View(quantile.df[quantile.df$ratio >= 2 | quantile.df$ratio <= 1/2, ])
+    #View(quantile.df[quantile.df$onequantile >= 0.9 | quantile.df$onequantile <=0.1, ])
+    #View(quantile.df[quantile.df$onequantile >= 0.95 | quantile.df$onequantile <=0.05, ])
+    
+    quantile.df.report$taxon = factor(quantile.df.report$taxon, levels = c("bacteria", "fungi", "plant", "animal","Archaea")) #coordinating color
+    #original
+   
+    quantile.df.report = read.delim("~/Desktop/replot/glm/quantile.df.report.si_f.txt",
+                                    sep = '\t',stringsAsFactors = FALSE,header = TRUE,row.names = 1,
+                                    check.names = FALSE)
+    #changing names of columns, only for plotting reasons
+    colnames(quantile.df.report)[c(6,9,12,15,16,17,18)] = c("Phy", "Tem", "Tec", "R2", "Adj.R2", "Taxon", "Phylum")
+    ggtern(quantile.df.report,aes(Phy,Tem,Tec, size=R2, color=Taxon, group=Taxon, fill=Taxon)) + 
+      geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+      geom_point(alpha=0.5) +
+      #geom_encircle(alpha=0.1,size=1) +
+      theme_bw(base_size = 20)  +
+      theme_showarrows() + 
+      theme_notitles() +
+      facet_wrap( ~ Taxon, ncol=5) +
+      
+      guides(shape=FALSE) +
+      scale_color_manual(values=c("#F8766D", "#B79F00", "#00BA38", "#00BFC4","#e91e63"))+
+      scale_fill_manual(values=c("#F8766D", "#B79F00", "#00BA38", "#00BFC4","#e91e63"))+
+      facet_wrap( ~ Taxon, ncol=5) 
+    
+    #preparing dominating variable
+    quantile.df.report$Dominating = "Neither"
+    quantile.df.report$Dominating[quantile.df.report$Prob_of_spa_dominating>=0.9] = "Tem"
+    quantile.df.report$Dominating[quantile.df.report$Prob_of_spa_dominating<=0.1] = "Phy"
+    quantile.df.report$Dominating = factor(quantile.df.report$Dominating, levels = c("Neither", "Phy", "Tem"))
+    table(quantile.df.report$Dominating)
+    View(quantile.df.report)
+    #introducing dominating influences
+    ggtern(quantile.df.report,aes(Phy,Tem,Tec, size=R2, color=Dominating, group=Taxon)) + 
+      geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+      geom_point(alpha=0.5) +
+      #geom_encircle(alpha=0.1,size=1) +
+      theme_bw(base_size = 20)  +
+      theme_showarrows() + 
+      theme_notitles() +
+      guides(shape=FALSE) +
+      scale_color_manual(values=c("#F8766D","#00AFBB", "#E7B800", "#00BFC4"))+
+      scale_fill_manual(values=c("#F8766D", "#00AFBB", "#E7B800", "#00BFC4"))+
+      facet_wrap( ~ Taxon,scales="free", ncol=4) 
+    
+    View(quantile.df.report)
+    #plotting each domain of life separately for better control
+    quantile.df.report = read.delim("~/Desktop/replot/glm/boots/quantile.df.report.di_f.txt",
+                                    sep = '\t',stringsAsFactors = FALSE,header = TRUE,row.names = 1,
+                                    check.names = FALSE)
+    #preparing dominating variable
+    quantile.df.report$Dominating = "Neither"
+    quantile.df.report$Dominating[quantile.df.report$Prob_of_spa_dominating>=0.9] = "Tem"
+    quantile.df.report$Dominating[quantile.df.report$Prob_of_spa_dominating<=0.1] = "Phy_Che"
+    quantile.df.report$Dominating = factor(quantile.df.report$Dominating, levels = c("Neither", "Phy_Che", "Tem"))
+    
+    table(quantile.df.report$Dominating)
+    quantile.df.report <- quantile.df.report[c("Phy_Che", "Tem", "Tec", "adjrsq", "Dominating","genus","Phylum","Taxonomy")]
+    tern.melt =reshape2:: melt(quantile.df.report, id.vars=c("Phy_Che", "Tem", "Tec", "adjrsq", "Dominating","genus","Phylum","Taxonomy"))
+    
+    #si
+    df = subset(tern.melt, Taxonomy == "Archaea")
+    View(tern.melt)
+    View(df)
+    nrow(df)
+    
+   p1 <- ggtern(df[-10,],aes(Phy_Che,Tem,Tec, size=adjrsq, color=Dominating, group=Taxonomy, shape = Phylum)) + 
+      geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+      geom_point(alpha=0.5) +
+      #geom_encircle(alpha=0.1,size=1) +
+      theme_bw(base_size = 20)  +
+      theme_showarrows() + 
+      theme_notitles() +
+    # guides(shape=FALSE) +
+      scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+      scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+      scale_shape_manual(values = c(16, 18,17)) + 
+      scale_size_continuous(limits = c(0.1, 1))
+    #facet_wrap( ~ Taxon,scales="free", ncol=4) 
+    p1
+    #bacteria
+    df = subset(tern.melt, Taxonomy == "Bacteria")
+    write.table(df, '~/Desktop/replot/glm/boots/bacteria.df.txt', 
+                sep = '\t', row.names = TRUE, quote = FALSE)
+    df = read.delim("~/Desktop/replot/glm/boots/bacteria.df.txt",
+                                    sep = '\t',stringsAsFactors = FALSE,header = TRUE,
+                                    check.names = FALSE)
+    df$type <- c(rep('a',368),rep('b',1),rep('c',1),rep('d',1))
+  p2 <-  ggtern(df,aes(Phy_Che,Tem,Tec, size=adjrsq, color=Dominating, group=Taxonomy, shape = type)) + 
+      geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+      geom_point(alpha=0.5) +
+      #geom_encircle(alpha=0.1,size=1) +
+      theme_bw(base_size = 20)  +
+      theme_showarrows() + 
+      theme_notitles() +
+     # guides(shape=FALSE) +
+      scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+      scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+      scale_shape_manual(values = c(16, 18,17,10,11)) + 
+      scale_size_continuous(limits = c(0, 1)) #make the smaller dots bigger when sample size is smaller
+    
+    p2
+    
+    #fungi
+    df = subset(tern.melt, Taxonomy == "Fungi")
+    nrow(df)
+    p3 <-  ggtern(df[-10,],aes(Phy_Che,Tem,Tec, size=adjrsq, color=Dominating, group=Taxonomy, shape = Phylum)) + 
+      geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+      geom_point(alpha=0.5) +
+      #geom_encircle(alpha=0.1,size=1) +
+      theme_bw(base_size = 20)  +
+      theme_showarrows() + 
+      theme_notitles() +
+      # guides(shape=FALSE) +
+      scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+      scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+      scale_shape_manual(values = c(16, 18,17,15)) + 
+      scale_size_continuous(limits = c(0.1, 1)) #make the smaller dots bigger when sample size is smaller
+   p3
+    
+   #Metazoa
+   df = subset(tern.melt, Taxonomy == "Metazoa")
+   nrow(df)
+   write.table(df, '~/Desktop/replot/glm/animal.df.txt', 
+               sep = '\t', row.names = TRUE, quote = FALSE)
+   df = read.delim("~/Desktop/replot/glm/animal.df.txt",
+                   sep = '\t',stringsAsFactors = FALSE,header = TRUE,
+                   check.names = FALSE)
+  p4 <- ggtern(df,aes(Phy_Che,Tem,Tec, size=adjrsq, color=Dominating, group=Taxonomy)) + 
+     geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+     geom_point(alpha=0.5) +
+     #geom_encircle(alpha=0.1,size=1) +
+     theme_bw(base_size = 20)  +
+     theme_showarrows() + 
+     theme_notitles() +
+     # guides(shape=FALSE) +
+     scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+     scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+    
+    # scale_shape_manual(values = c(16, 17,15)) + 
+     scale_size_continuous(limits = c(0, 1)) #make the smaller dots bigger when sample size is smaller
+   p4
+   
+   #Viridiplantae
+   df = subset(tern.melt, Taxonomy == "Viridiplantae")
+   nrow(df)
+   p5 <- ggtern(df[-10,],aes(Phy_Che,Tem,Tec, size=adjrsq, color=Dominating, group=Taxonomy, shape = Phylum)) + 
+     geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+     geom_point(alpha=0.5) +
+     #geom_encircle(alpha=0.1,size=1) +
+     theme_bw(base_size = 20)  +
+     theme_showarrows() + 
+     theme_notitles() +
+     # guides(shape=FALSE) +
+     scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+     scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+     scale_shape_manual(values = c(16, 17,15)) + 
+     scale_size_continuous(limits = c(0, 1)) #make the smaller dots bigger when sample size is smaller
+   p5
+   
+   
+   #di
+   df = subset(tern.melt, Taxonomy == "Archaea")
+   View(tern.melt)
+   View(df)
+   nrow(df)
+   
+   p1 <- ggtern(df,aes(Phy_Che,Tem,Tec, size=adjrsq, color=Dominating, group=Taxonomy, shape = Phylum)) + 
+     geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+     geom_point(alpha=0.5) +
+     #geom_encircle(alpha=0.1,size=1) +
+     theme_bw(base_size = 20)  +
+     theme_showarrows() + 
+     theme_notitles() +
+     # guides(shape=FALSE) +
+     scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+     scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+     scale_shape_manual(values = c(16, 18,17)) + 
+     scale_size_continuous(limits = c(0.1, 0.3))
+   #facet_wrap( ~ Taxon,scales="free", ncol=4) 
+   p1
+   #bacteria
+   df = subset(tern.melt, Taxonomy == "Bacteria")
+   write.table(df, '~/Desktop/replot/glm/boots/bacteria.df.txt', 
+               sep = '\t', row.names = TRUE, quote = FALSE)
+   df = read.delim("~/Desktop/replot/glm/boots/bacteria.df.txt",
+                   sep = '\t',stringsAsFactors = FALSE,header = TRUE,
+                   check.names = FALSE)
+   df$type <- c(rep('a',368),rep('b',1),rep('c',1),rep('d',1))
+   p2 <-  ggtern(df,aes(Phy_Che,Tem,Tec, size=adjrsq, color=Dominating, group=Taxonomy, shape = type)) + 
+     geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+     geom_point(alpha=0.5) +
+     #geom_encircle(alpha=0.1,size=1) +
+     theme_bw(base_size = 20)  +
+     theme_showarrows() + 
+     theme_notitles() +
+     # guides(shape=FALSE) +
+     scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+     scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+     scale_shape_manual(values = c(16, 18,17,10,11)) + 
+     scale_size_continuous(limits = c(0, 1)) #make the smaller dots bigger when sample size is smaller
+   
+   p2
+   
+   #fungi
+   df = subset(tern.melt, Taxonomy == "Fungi")
+   nrow(df)
+   p3 <-  ggtern(df[-10,],aes(Phy_Che,Tem,Tec, size=adjrsq, color=Dominating, group=Taxonomy, shape = Phylum)) + 
+     geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+     geom_point(alpha=0.5) +
+     #geom_encircle(alpha=0.1,size=1) +
+     theme_bw(base_size = 20)  +
+     theme_showarrows() + 
+     theme_notitles() +
+     # guides(shape=FALSE) +
+     scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+     scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+     scale_shape_manual(values = c(16, 18,17,15)) + 
+     scale_size_continuous(limits = c(0.1, 1)) #make the smaller dots bigger when sample size is smaller
+   p3
+   
+   #Metazoa
+   df = subset(tern.melt, Taxonomy == "Metazoa")
+   nrow(df)
+   write.table(df, '~/Desktop/replot/glm/animal.df.txt', 
+               sep = '\t', row.names = TRUE, quote = FALSE)
+   df = read.delim("~/Desktop/replot/glm/animal.df.txt",
+                   sep = '\t',stringsAsFactors = FALSE,header = TRUE,
+                   check.names = FALSE)
+   p4 <- ggtern(df,aes(Phy_Che,Tem,Tec, size=adjrsq, color=Dominating, group=Taxonomy)) + 
+     geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+     geom_point(alpha=0.5) +
+     #geom_encircle(alpha=0.1,size=1) +
+     theme_bw(base_size = 20)  +
+     theme_showarrows() + 
+     theme_notitles() +
+     # guides(shape=FALSE) +
+     scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+     scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+     
+     # scale_shape_manual(values = c(16, 17,15)) + 
+     scale_size_continuous(limits = c(0, 1)) #make the smaller dots bigger when sample size is smaller
+   p4
+   
+   #Viridiplantae
+   df = subset(tern.melt, Taxonomy == "Viridiplantae")
+   nrow(df)
+   p5 <- ggtern(df[-10,],aes(Phy_Che,Tem,Tec, size=adjrsq, color=Dominating, group=Taxonomy, shape = Phylum)) + 
+     geom_confidence_tern(breaks = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), contour=TRUE, alpha=0.8, size=0.2) +
+     geom_point(alpha=0.5) +
+     #geom_encircle(alpha=0.1,size=1) +
+     theme_bw(base_size = 20)  +
+     theme_showarrows() + 
+     theme_notitles() +
+     # guides(shape=FALSE) +
+     scale_color_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+     scale_fill_manual(values=c("#6E7D92","#E8C639","#3AB9B0"))+
+     scale_shape_manual(values = c(16, 17,15)) + 
+     scale_size_continuous(limits = c(0, 1)) #make the smaller dots bigger when sample size is smaller
+   p5
+   
+   p2
+    ggsave(filename='~/Desktop/replot/glm/boots/acchea_si.pdf',width = 7,height = 5)
+    
+    library(patchwork)
+    p1 + p2 + p3 + p4 + p5 + plot_layout(ncol = 5) 
+```
+
+## 2.12 gradient boosting regression model
+
+```{r Ks_and_total_carbon_prediction}
+
+library(gbm)
+ library(caret)
+ 
+ otu <- read.table('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/genus-sd-si.txt', sep = '\t', header = TRUE, fill = TRUE)
+ meta <- read.table('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/metabo-sd-si.txt', sep = '\t', header = TRUE, fill = TRUE)
+ group <- read.table('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/group_cgf.txt', sep = '\t', header = TRUE, fill = TRUE)
+ 
+ View(otu)
+ View(meta)
+ View(group)
+ 
+ 
+ 
+ #exist in more than 10% samples
+ keep <- apply(otu, 2, function(x) sum(x > 0) / nrow(otu) >= 0.1)
+ keep
+ otu_filtered <- otu[, keep]
+ View(otu_filtered)
+ ncol(otu_filtered)
+ 
+ 
+ keep <- apply(meta, 2, function(x) sum(x > 0) / nrow(meta) >= 0.1)
+ keep
+ meta_filtered <- meta[, keep]
+ View(otu_filtered)
+ ncol(meta_filtered)
+ 
+ 
+ otu_meta <- merge(otu_filtered, meta_filtered, id = c('seqid'))
+ View(otu_meta)
+ write.table(otu_meta,'/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/genus_meta_si.txt',
+             sep = '\t', col.names = NA, quote = FALSE)
+ 
+ 
+ # 仅保留bacteria fungi archea
+genus_info <- read.table('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/genus-phylum.txt', sep = '\t', header = TRUE, fill = TRUE)
+ 
+library(dplyr)
+
+# 1) 定义保留的 kingdom
+keep_kingdom <- c("Archaea", "Bacteria", "Fungi")
+
+# 2) 从 genus_info 里取出要保留的 genus 名单
+keep_genus <- genus_info %>%
+  filter(kingdom %in% keep_kingdom) %>%
+  pull(genus) %>%
+  unique()
+
+# 3) 找出在 otu_filtered 里真实存在的 genus 列（避免 genus_info 有而 otu_filtered 没有）
+feature_cols <- intersect(colnames(otu_filtered), keep_genus)
+
+# 4) 组合最终保留列
+# 注意：把要的非feature列都加上，比如 seqid、C（carbon）
+must_cols <- c("seqid")  
+must_cols <- must_cols[must_cols %in% colnames(otu_filtered)]  # 防止列名不一致报错
+
+otu_microbe <- otu_filtered %>%
+  select(all_of(must_cols), all_of(feature_cols))
+
+# 5) 检查一下过滤效果
+cat("Before:", ncol(otu_filtered), "cols\n")
+cat("After :", ncol(otu_microbe), "cols\n")
+cat("Kept feature cols:", length(feature_cols), "\n")
+
+# 6) 看看还有没有“非微生物”漏网之鱼（理论上不该有）
+unknown_cols <- setdiff(setdiff(colnames(otu_microbe), must_cols), keep_genus)
+length(unknown_cols)
+head(unknown_cols)
+
+
+
+otu_meta <- merge(otu_microbe, meta_filtered, id = c('seqid'))
+
+ncol(otu_meta)
+otu_group <- merge(otu_meta, group, id = c('seqid'))
+
+rownames(otu_group) <- otu_group[,1]
+#otu_group <- otu_group[,-1]
+#otu_group <- otu_group[,-2012]
+library(glmnet)
+library(caret)
+
+otu_group <- otu_group %>% dplyr::select(-C, -N, -group, -seqid, -kind)
+
+otu_group <- otu_group %>% dplyr::select(-N, -group, -seqid, -type, -kind)
+
+df <- otu_group 
+
+## fast gbrm
+
+
+suppressPackageStartupMessages({
+  library(gbm)
+  library(caret)
+  library(dplyr)
+})
+
+run_gbm_oof_with_importance <- function(df, target_col="type", K=10,
+                                        ntrees=2000, depth=7, shrink=0.01,
+                                        bag_frac=0.6, min_node=10,
+                                        top_n=30, seed=1) {
+  
+  set.seed(seed)
+  
+  # numeric only + target
+  num_cols <- sapply(df, is.numeric)
+  num_cols[target_col] <- TRUE
+  df <- df[, num_cols, drop=FALSE]
+  df <- df[complete.cases(df), , drop=FALSE]
+  
+  folds <- createFolds(df[[target_col]], k = K, list = TRUE, returnTrain = FALSE)
+  
+  pred_oof <- rep(NA_real_, nrow(df))
+  imp_list <- vector("list", K)
+  
+  for (k in seq_along(folds)) {
+    test_idx  <- folds[[k]]
+    train_idx <- setdiff(seq_len(nrow(df)), test_idx)
+    
+    train_df <- df[train_idx, , drop=FALSE]
+    test_df  <- df[test_idx,  , drop=FALSE]
+    
+    m <- gbm(
+      formula = as.formula(paste(target_col, "~ .")),
+      data = train_df,
+      distribution = "gaussian",
+      n.trees = ntrees,
+      cv.folds = 0,
+      shrinkage = shrink,
+      interaction.depth = depth,
+      bag.fraction = bag_frac,
+      n.minobsinnode = min_node,
+      verbose = FALSE
+    )
+    
+    pred_oof[test_idx] <- predict(m, newdata = test_df, n.trees = ntrees, type = "response")
+    
+    imp <- summary(m, n.trees = ntrees, plotit = FALSE)  # contains var + rel.inf
+    imp$fold <- k
+    imp_list[[k]] <- imp[1:min(top_n, nrow(imp)), c("var", "rel.inf", "fold")]
+    
+    cat("Fold", k, "done\n")
+  }
+  
+  y <- df[[target_col]]
+  resid <- y - pred_oof
+  RMSE <- sqrt(mean(resid^2))
+  R2   <- 1 - sum(resid^2) / sum((y - mean(y))^2)
+  cor_pear <- cor.test(pred_oof, y, method="pearson")
+  
+  imp_df <- bind_rows(imp_list)
+  imp_sum <- imp_df %>%
+    group_by(var) %>%
+    summarise(
+      mean_rel_inf = mean(rel.inf),
+      freq = n(),                 # 出现在top_n的fold次数，<=K
+      .groups = "drop"
+    ) %>%
+    arrange(desc(mean_rel_inf))
+  
+  list(
+    pred = data.frame(y=y, pred=pred_oof),
+    RMSE = RMSE,
+    R2 = R2,
+    cor = cor_pear,
+    importance_raw = imp_df,
+    importance_summary = imp_sum
+  )
+}
+
+# run once (depth=7) 
+res7 <- run_gbm_oof_with_importance(
+  df = otu_group, target_col="type", K=10,
+  ntrees=2000, depth=7, shrink=0.01, bag_frac=0.6, min_node=10,
+  top_n=30, seed=1
+)
+
+cat("\nDepth=7  RMSE=", round(res7$RMSE,3), " R2=", round(res7$R2,3), "\n")
+print(res7$cor)
+
+# 导出：OOF预测散点数据
+write.table(res7$pred, "~/Desktop/gbm_C_oof_pred_vs_actual_depth7.txt",
+            sep="\t", quote=FALSE, row.names=FALSE)
+
+# 导出：top30（按mean_rel_inf排序）+ freq
+top30_7 <- res7$importance_summary %>% slice(1:30)
+write.table(top30_7, "~/Desktop/gbm_C_top30_depth7.txt",
+            sep="\t", quote=FALSE, row.names=FALSE)
+
+
+res5 <- run_gbm_oof_with_importance(
+  df = otu_group, target_col="type", K=10,
+  ntrees=2000, depth=5, shrink=0.01, bag_frac=0.6, min_node=10,
+  top_n=30, seed=1
+)
+
+res3 <- run_gbm_oof_with_importance(
+  df = otu_group, target_col="type", K=10,
+  ntrees=2000, depth=3, shrink=0.01, bag_frac=0.6, min_node=10,
+  top_n=30, seed=1
+)
+
+cat("\nDepth=5  RMSE=", round(res5$RMSE,3), " R2=", round(res5$R2,3), "\n")
+cat("Depth=3  RMSE=", round(res3$RMSE,3), " R2=", round(res3$R2,3), "\n")
+
+# 导出各自top30
+write.table(res5$importance_summary %>% slice(1:30), "~/Desktop/gbm_ks_top30_depth5.txt",
+            sep="\t", quote=FALSE, row.names=FALSE)
+
+write.table(res3$importance_summary %>% slice(1:30), "~/Desktop/replot/restoration_pre/randomforest/gbm_ks_top30_depth3.txt",
+            sep="\t", quote=FALSE, row.names=FALSE)
+
+
+
+# 全模型+top 30因子 #
+
+suppressPackageStartupMessages({
+  library(gbm)
+  library(caret)
+  library(dplyr)
+  library(tibble)
+})
+
+# 核心函数：给定数据+特征集合，做10-fold OOF + 输出fold明细 
+run_gbm_oof <- function(df, target_col,
+                        feature_cols = NULL,
+                        K = 10,
+                        ntrees = 2000, depth = 3, shrink = 0.01,
+                        bag_frac = 0.6, min_node = 10,
+                        top_n = 30, seed = 1) {
+  
+  set.seed(seed)
+  
+  stopifnot(target_col %in% colnames(df))
+  
+  # 只用数值列（gbm需要数值/有序因子，这里直接强制数值以免出坑）
+  num_cols <- sapply(df, is.numeric)
+  num_cols[target_col] <- TRUE
+  df2 <- df[, num_cols, drop = FALSE]
+  df2 <- df2[complete.cases(df2), , drop = FALSE]
+  
+  # feature_cols 为空：用所有除target外的列
+  if (is.null(feature_cols)) {
+    feature_cols <- setdiff(colnames(df2), target_col)
+  } else {
+    feature_cols <- intersect(feature_cols, colnames(df2))
+  }
+  
+  # 组装建模数据
+  model_df <- df2[, c(target_col, feature_cols), drop = FALSE]
+  stopifnot(!(target_col %in% feature_cols))
+  
+  folds <- createFolds(model_df[[target_col]], k = K, list = TRUE, returnTrain = FALSE)
+  
+  pred_oof <- rep(NA_real_, nrow(model_df))
+  
+  # 保存每个fold的预测明细（你要的 test_y / pred_y）
+  fold_pred_list <- vector("list", K)
+  
+  # 保存每个fold的topN importance（用于第一阶段挑top30）
+  imp_list <- vector("list", K)
+  
+  for (k in seq_along(folds)) {
+    test_idx  <- folds[[k]]
+    train_idx <- setdiff(seq_len(nrow(model_df)), test_idx)
+    
+    train_df <- model_df[train_idx, , drop = FALSE]
+    test_df  <- model_df[test_idx,  , drop = FALSE]
+    
+    m <- gbm(
+      formula = as.formula(paste(target_col, "~ .")),
+      data = train_df,
+      distribution = "gaussian",
+      n.trees = ntrees,
+      cv.folds = 0,
+      shrinkage = shrink,
+      interaction.depth = depth,
+      bag.fraction = bag_frac,
+      n.minobsinnode = min_node,
+      verbose = FALSE
+    )
+    
+    pred <- predict(m, newdata = test_df, n.trees = ntrees, type = "response")
+    pred_oof[test_idx] <- pred
+    
+    fold_pred_list[[k]] <- data.frame(
+      fold = k,
+      row_id = test_idx,                 # 在model_df内的行号（可用于回填/对齐）
+      y = test_df[[target_col]],
+      pred = pred
+    )
+    
+    imp <- summary(m, n.trees = ntrees, plotit = FALSE)
+    imp$fold <- k
+    imp_list[[k]] <- imp[1:min(top_n, nrow(imp)), c("var", "rel.inf", "fold")]
+    
+    cat("Fold", k, "done\n")
+  }
+  
+  # OOF性能
+  y <- model_df[[target_col]]
+  resid <- y - pred_oof
+  RMSE <- sqrt(mean(resid^2))
+  R2   <- 1 - sum(resid^2) / sum((y - mean(y))^2)
+  cor_pear <- cor.test(pred_oof, y, method="pearson")
+  
+  # 汇总importance（第一阶段会用到）
+  imp_df <- bind_rows(imp_list)
+  imp_sum <- imp_df %>%
+    group_by(var) %>%
+    summarise(mean_rel_inf = mean(rel.inf),
+              freq = n(),
+              .groups = "drop") %>%
+    arrange(desc(mean_rel_inf))
+  
+  # 组装OOF逐样本结果（带fold）
+  fold_pred <- bind_rows(fold_pred_list) %>%
+    arrange(row_id)
+  
+  oof_pred <- data.frame(
+    y = y,
+    pred = pred_oof
+  )
+  
+  list(
+    model_df = model_df,                 # 想看最终进模型的数据
+    feature_cols = feature_cols,
+    pred_oof = oof_pred,                 # 全样本OOF预测（无fold）
+    fold_pred = fold_pred,               # 每fold的test_y/pred_y明细（有fold）
+    RMSE = RMSE,
+    R2 = R2,
+    cor = cor_pear,
+    importance_raw = imp_df,
+    importance_summary = imp_sum
+  )
+}
+
+
+# 两阶段
+
+
+# Stage 1：全特征跑一次（depth=3）用于选top30 
+res_all <- run_gbm_oof(
+  df = otu_group,
+  target_col = "C",      # 预测C；预测Ks就改成"Ks"
+  feature_cols = NULL,   # NULL=用所有数值特征
+  K = 10,
+  ntrees = 2000, depth = 3, shrink = 0.01,
+  bag_frac = 0.6, min_node = 10,
+  top_n = 30, seed = 1
+)
+
+cat("\n[ALL features] RMSE=", round(res_all$RMSE,3), " R2=", round(res_all$R2,3), "\n")
+print(res_all$cor)
+
+# 取 top30 特征名
+top30_vars <- res_all$importance_summary %>% slice(1:30) %>% pull(var)
+
+# Stage 2：只用top30再跑一次（depth=3） 
+res_top30 <- run_gbm_oof(
+  df = otu_group,
+  target_col = "C",
+  feature_cols = top30_vars,
+  K = 10,
+  ntrees = 2000, depth = 3, shrink = 0.01,
+  bag_frac = 0.6, min_node = 10,
+  top_n = 20, seed = 1
+)
+
+cat("\n[TOP30 only] RMSE=", round(res_top30$RMSE,3), " R2=", round(res_top30$R2,3), "\n")
+print(res_top30$cor)
+
+# 输出文件：pred_y/test_y（按fold）和OOF整体 
+write.table(res_all$fold_pred,  "~/Desktop/replot/restoration_pre/randomforest/gbm_C_ALL_fold_pred.txt",
+            sep="\t", quote=FALSE, row.names=FALSE)
+
+write.table(res_all$pred_oof,   "~/Desktop/replot/restoration_pre/randomforest/gbm_C_ALL_oof_pred.txt",
+            sep="\t", quote=FALSE, row.names=FALSE)
+
+write.table(res_all$importance_summary %>% slice(1:30),
+            "~/Desktop/replot/restoration_pre/randomforest/gbm_C_ALL_top30_vars.txt",
+            sep="\t", quote=FALSE, row.names=FALSE)
+
+write.table(res_top30$fold_pred, "~/Desktop/replot/restoration_pre/randomforest/gbm_C_TOP30_fold_pred.txt",
+            sep="\t", quote=FALSE, row.names=FALSE)
+
+write.table(res_top30$pred_oof,  "~/Desktop/replot/restoration_pre/randomforest/gbm_C_TOP30_oof_pred.txt",
+            sep="\t", quote=FALSE, row.names=FALSE)
+
+cat("\nSaved:\n",
+    "  ~/Desktop/gbm_C_ALL_fold_pred.txt\n",
+    "  ~/Desktop/gbm_C_ALL_oof_pred.txt\n",
+    "  ~/Desktop/gbm_C_ALL_top30_vars.txt\n",
+    "  ~/Desktop/gbm_C_TOP30_fold_pred.txt\n",
+    "  ~/Desktop/gbm_C_TOP30_oof_pred.txt\n")
+
+
+
+# top 30 only
+
+suppressPackageStartupMessages({
+  library(gbm)
+  library(caret)
+  library(dplyr)
+})
+
+nested_top30_gbm <- function(df, target_col="C",
+                             K_outer=10, K_inner=5,
+                             ntrees=3000, depth=3, shrink=0.01,
+                             bag_frac=0.6, min_node=10,
+                             top_n=30, seed=1) {
+  
+  set.seed(seed)
+  
+  # numeric only + target
+  num_cols <- sapply(df, is.numeric)
+  num_cols[target_col] <- TRUE
+  df <- df[, num_cols, drop=FALSE]
+  df <- df[complete.cases(df), , drop=FALSE]
+  
+  outer_folds <- createFolds(df[[target_col]], k=K_outer, list=TRUE)
+  
+  pred_oof <- rep(NA_real_, nrow(df))
+  selected_list <- vector("list", K_outer)
+  
+  for (fo in seq_along(outer_folds)) {
+    test_idx  <- outer_folds[[fo]]
+    train_idx <- setdiff(seq_len(nrow(df)), test_idx)
+    
+    train_df <- df[train_idx, , drop=FALSE]
+    test_df  <- df[test_idx,  , drop=FALSE]
+    
+    #inner CV: select top30 only using TRAIN data
+    inner_folds <- createFolds(train_df[[target_col]], k=K_inner, list=TRUE)
+    imp_inner_list <- vector("list", K_inner)
+    
+    for (fi in seq_along(inner_folds)) {
+      in_test  <- inner_folds[[fi]]
+      in_train <- setdiff(seq_len(nrow(train_df)), in_test)
+      
+      tr_in <- train_df[in_train, , drop=FALSE]
+      
+      m_in <- gbm(
+        as.formula(paste(target_col, "~ .")),
+        data = tr_in,
+        distribution="gaussian",
+        n.trees=ntrees,
+        cv.folds=0,
+        shrinkage=shrink,
+        interaction.depth=depth,
+        bag.fraction=bag_frac,
+        n.minobsinnode=min_node,
+        verbose=FALSE
+      )
+      
+      imp_in <- summary(m_in, n.trees=ntrees, plotit=FALSE)
+      imp_inner_list[[fi]] <- imp_in[1:min(top_n, nrow(imp_in)), c("var","rel.inf")]
+    }
+    
+    imp_inner <- bind_rows(imp_inner_list) %>%
+      group_by(var) %>%
+      summarise(mean_rel_inf = mean(rel.inf), freq = n(), .groups="drop") %>%
+      arrange(desc(mean_rel_inf))
+    
+    top30_vars <- imp_inner %>% slice(1:top_n) %>% pull(var)
+    selected_list[[fo]] <- data.frame(outer_fold=fo, var=top30_vars)
+    
+    # train final model on full outer-train using ONLY top30
+    train30 <- train_df[, c(target_col, top30_vars), drop=FALSE]
+    test30  <- test_df[,  c(target_col, top30_vars), drop=FALSE]
+    
+    m_out <- gbm(
+      as.formula(paste(target_col, "~ .")),
+      data = train30,
+      distribution="gaussian",
+      n.trees=ntrees,
+      cv.folds=0,
+      shrinkage=shrink,
+      interaction.depth=depth,
+      bag.fraction=bag_frac,
+      n.minobsinnode=min_node,
+      verbose=FALSE
+    )
+    
+    pred_oof[test_idx] <- predict(m_out, newdata=test30, n.trees=ntrees, type="response")
+    
+    cat("Outer fold", fo, "done\n")
+  }
+  
+  y <- df[[target_col]]
+  resid <- y - pred_oof
+  RMSE <- sqrt(mean(resid^2))
+  R2   <- 1 - sum(resid^2) / sum((y - mean(y))^2)
+  cor_pear <- cor.test(pred_oof, y, method="pearson")
+  
+  selected_df <- bind_rows(selected_list)
+  
+  list(
+    pred = data.frame(y=y, pred=pred_oof),
+    RMSE = RMSE,
+    R2 = R2,
+    cor = cor_pear,
+    selected_top30_each_outer_fold = selected_df
+  )
+}
+
+res_nested <- nested_top30_gbm(
+  df = otu_group, target_col="C",
+  K_outer=10, K_inner=5,
+  ntrees=2000, depth=3, shrink=0.01,
+  bag_frac=0.6, min_node=10,
+  top_n=20, seed=1
+)
+
+cat("\n[NESTED top30] RMSE=", round(res_nested$RMSE,3),
+    " R2=", round(res_nested$R2,3), "\n")
+print(res_nested$cor)
+
+# 导出无偏OOF预测
+write.table(res_nested$pred, "~/Desktop/replot/restoration_pre/randomforest/gbm_ks_NESTED_top20_oof_pred.txt",
+            sep="\t", quote=FALSE, row.names=FALSE)
+
+# 导出每个outer fold选到的top30（看稳定性）
+write.table(res_nested$selected_top30_each_outer_fold,
+            "~/Desktop/replot/restoration_pre/randomforest/gbm_ks_NESTED_top20_selected_by_outerfold.txt",
+            sep="\t", quote=FALSE, row.names=FALSE)
+
+
+
+ #可视化
+
+df <- read.delim('~/Desktop/replot/restoration_pre/randomforest/pre_actu_ks_c.txt',
+                        stringsAsFactors = FALSE, check.names = FALSE,
+                        header = T, sep = "\t")
+
+ 
+library(tidyverse)
+
+
+# 统一 group 顺序（可选）
+df$group <- factor(df$group, levels = c("SD", "SI"))
+
+myPalette <- c('#6D4C41','#9E9D27')
+
+# 通用指标计算函数
+calc_metrics <- function(d, x, y) {
+  x <- d[[x]]; y <- d[[y]]
+  ok <- is.finite(x) & is.finite(y)
+  x <- x[ok]; y <- y[ok]
+  
+  resid <- y - x
+  rmse <- sqrt(mean(resid^2))
+  r2   <- 1 - sum((y - x)^2) / sum((y - mean(y))^2)  # 注意：这里等价于用pred解释actual
+  ct   <- suppressWarnings(cor.test(x, y, method="pearson"))
+  
+  list(
+    rmse = rmse,
+    r2 = r2,
+    rho = unname(ct$estimate),
+    p = ct$p.value
+  )
+}
+
+fmt_p <- function(p) {
+  ifelse(p < 2.2e-16, "<2.2e-16",
+         ifelse(p < 1e-3, sprintf("%.1e", p), sprintf("%.3f", p)))
+}
+
+# 生成一个 Pred vs Actual 面板：点 + y=x + 拟合线 + 指标块 
+pred_actual_panel <- function(d, xcol, ycol, xlab, ylab, tag=NULL) {
+  
+  m <- calc_metrics(d, xcol, ycol)
+  
+  # 指标文本（放右上角）
+  lab <- paste0(
+    "R² = ", sprintf("%.3f", m$r2), "\n",
+    "RMSE = ", sprintf("%.3f", m$rmse), "\n",
+    "\u03C1 = ", sprintf("%.3f", m$rho), "\n",
+    "p = ", fmt_p(m$p)
+  )
+  
+  # 计算坐标位置：右上角留白一点
+  xr <- range(d[[xcol]], na.rm=TRUE)
+  yr <- range(d[[ycol]], na.rm=TRUE)
+  x_pos <- xr[1] + 0.98 * diff(xr)
+  y_pos <- yr[1] + 0.98 * diff(yr)
+  
+  ggplot(d, aes(x = .data[[xcol]], y = .data[[ycol]])) +
+    # 点：两组
+    geom_point(aes(shape = group, color = group),
+               size = 2.2, alpha = 0.75, stroke = 0.6) +
+    
+    # 理想线：y = x
+    geom_abline(intercept = 0, slope = 1,
+                linetype = "dashed", linewidth = 0.8, color = "grey55") +
+    
+    # 拟合线：线性回归（校准）
+    geom_smooth(method = "lm", se = FALSE,
+                linewidth = 1.1, color = "black") +
+    scale_color_manual(values = myPalette) +
+    
+ #   指标块
+    # annotate("label",
+    #          x = x_pos, y = y_pos,
+    #          label = lab, hjust = 1, vjust = 1,
+    #          label.size = 0.2, size = 3.2,
+    #          fill = "white", alpha = 0.85) +
+
+    labs(x = xlab, y = ylab, tag = tag) +
+    
+    # 更省版面的主题
+    theme_classic(base_size = 20) +
+    theme(
+      legend.position = "none",
+      legend.title = element_blank(),
+      legend.margin = margin(b = -6),
+      plot.tag = element_text(face = "bold", size = 20),
+      axis.title = element_text(size = 20),
+      axis.text = element_text(size = 20)
+    ) +
+    guides(
+      color = guide_legend(override.aes = list(alpha = 1, size = 3)),
+      shape = guide_legend(override.aes = list(alpha = 1, size = 3))
+    )
+}
+
+# 组装两个面板：上 Ks 下 C 
+p1 <- pred_actual_panel(
+  df,
+  xcol = "pred_ks", ycol = "test_ks",
+  xlab = "Predicted Ks (m/day)",
+  ylab = "Actual Ks (m/day)",
+  tag = NULL
+)
+
+p2 <- pred_actual_panel(
+  df,
+  xcol = "pred_c", ycol = "test_c",
+  xlab = "Predicted carbon (g/kg)",
+  ylab = "Actual carbon (g/kg)",
+  tag = NULL
+)
+
+# patchwork 拼图
+library(patchwork)
+
+fig <- p1 + p2
+
+fig <- p1 + p2 + plot_layout(heights = c(1, 1), guides = "collect") &
+  theme(legend.position = "none")
+
+fig
+
+
+
+ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.ks.c-u.pdf",width = 8,height = 3.5) 
+
+library(dplyr)
+df <- read.delim('~/Desktop/replot/restoration_pre/randomforest/gbm_C_top30_depth3.txt',
+                 stringsAsFactors = FALSE, check.names = FALSE,
+                 header = T, sep = "\t")
+
+df <- df %>%
+  mutate(
+    guild = case_when(
+      phylum == "Ascomycota" ~ "Fungal decomposers",
+      phylum == "Proteobacteria" ~ "Proteobacteria (oligotrophic/lifestyle)",
+      phylum == "Planctomycetes" ~ "Planctomycetes (slow-growing clade)",
+      phylum %in% c("Bacteroidetes","Rhodothermaeota") ~ "Heterotrophic degraders",
+      phylum == "Actinobacteria" ~ "Arid/biocrust Actinobacteria",
+      TRUE ~ "Other"
+    ),
+    guild = factor(guild, levels = c(
+      "Arid/biocrust Actinobacteria",
+      "Fungal decomposers",
+      "Proteobacteria (oligotrophic/lifestyle)",
+      "Planctomycetes (slow-growing clade)",
+      "Heterotrophic degraders",
+      "Other"
+    ))
+  )
+
+imp20 <- df[1:20,]
+
+library(dplyr)
+library(forcats)
+
+imp20_plot <- imp20 %>%
+  arrange(desc(mean_rel_inf)) %>%
+  mutate(
+    var = factor(var, levels = var)   # 保持当前顺序
+  )
+
+
+guild_levels <- c(
+  "Arid/biocrust Actinobacteria",
+  "Fungal decomposers",
+  "Proteobacteria (oligotrophic/lifestyle)",
+  "Planctomycetes (slow-growing clade)",
+  "Heterotrophic degraders"
+)
+
+imp20_plot <- imp20_plot %>%
+  mutate(guild = factor(guild, levels = guild_levels))
+
+myPalette <- c('#8DD3C7','#F8985C','#81d4fa','#F66A62','#aed581')
+names(myPalette) <- guild_levels
+
+ggplot(imp20_plot, aes(x = mean_rel_inf,  y = forcats::fct_rev(var))) +
+  geom_col(aes(fill = guild), width = 0.75, alpha = 0.9) +
+  scale_fill_manual(values = myPalette, breaks = guild_levels) +
+  geom_point(aes(size = freq), color = "#90a4ae", alpha = 0.8) +
+  scale_size_continuous(range = c(1.5, 4.5)) +
+  labs(
+    x = "Mean relative influence (GBM)",
+    y = NULL,
+    fill = NULL,
+    size = "Fold freq"
+  ) +
+  theme_classic(base_size = 16) +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(size = 16, colour = 'black'),
+    axis.text.y = element_text(size = 16, colour = 'black')
+  )
+
+ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_top20-c.pdf",width = 8,height = 6) 
+
+
+# ks
+df <- read.delim('~/Desktop/replot/restoration_pre/randomforest/gbm_ks_top30_depth3.txt',
+                 stringsAsFactors = FALSE, check.names = FALSE,
+                 header = T, sep = "\t")
+library(dplyr)
+library(stringr)
+
+# top20（也可以替换成 imp20$var）
+ks_top20 <- c(
+  "Saccharopolyspora",
+  "Nitrosomonas",
+  "Nocardioidaceae_unidentified",
+  "Flexivirga",
+  "Xanthomonadaceae_unidentified",
+  "Saccharomonospora",
+  "Lysobacter",
+  "Hafnia",
+  "Luteitalea",
+  "Chelatococcus",
+  "Candidatus_Nitrosocosmicus",
+  "Tubaria",
+  "Haloactinopolyspora",
+  "Providencia",
+  "Jiangellaceae_unidentified",
+  "Solirubrobacterales_unidentified",
+  "Kallotenue",
+  "Nitrobacter",
+  "Stenotrophomonas",
+  "Achromobacter"
+)
+
+# 规则：可以按功能改动各个集合
+guild_map <- list(
+  "Arid/biocrust Actinobacteria" = c(
+    "Saccharopolyspora",
+    "Nocardioidaceae_unidentified",
+    "Flexivirga",
+    "Saccharomonospora",
+    "Haloactinopolyspora",
+    "Jiangellaceae_unidentified",
+    "Solirubrobacterales_unidentified"
+  ),
+  "N cycling (nitrifiers)" = c(
+    "Nitrosomonas",
+    "Candidatus_Nitrosocosmicus",
+    "Nitrobacter"
+  ),
+  "Proteobacteria (rhizosphere/fast-growing)" = c(
+    "Xanthomonadaceae_unidentified",
+    "Lysobacter",
+    "Hafnia",
+    "Chelatococcus",
+    "Providencia",
+    "Stenotrophomonas",
+    "Achromobacter"
+  ),
+  "Oligotroph/soil core (Acidobacteria)" = c(
+    "Luteitalea"
+  ),
+  "Fungal decomposers" = c(
+    "Tubaria"
+  ),
+  "Other slow-growing soil bacteria" = c(
+    "Kallotenue"
+  )
+)
+
+assign_guild <- function(x, map) {
+  for (nm in names(map)) {
+    if (x %in% map[[nm]]) return(nm)
+  }
+  return("Unclassified")
+}
+
+ks_guild_df <- tibble(var = ks_top20) %>%
+  mutate(
+    guild = vapply(var, assign_guild, character(1), map = guild_map),
+    guild = factor(
+      guild,
+      levels = c(
+        "Arid/biocrust Actinobacteria",
+        "N cycling (nitrifiers)",
+        "Proteobacteria (rhizosphere/fast-growing)",
+        "Oligotroph/soil core (Acidobacteria)",
+        "Fungal decomposers",
+        "Other slow-growing soil bacteria",
+        "Unclassified"
+      )
+    )
+  )
+
+ks_guild_df
+# write.table(ks_guild_df, "ks_top20_guild.tsv", sep="\t", quote=FALSE, row.names=FALSE)
+
+imp20 <- df[1:20,]
+imp20 <- imp20 %>%
+  left_join(ks_guild_df, by = "var")
+
+
+
+
+imp20_plot <- imp20 %>%
+  arrange(desc(mean_rel_inf)) %>%
+  mutate(
+    var = factor(var, levels = var)   # 保持当前顺序
+  )
+
+
+library(dplyr)
+library(ggplot2)
+library(forcats)
+
+guild_levels <- c(
+  "Arid/biocrust Actinobacteria",
+  "N cycling (nitrifiers)",
+  "Proteobacteria (rhizosphere/fast-growing)",
+  "Oligotroph/soil core (Acidobacteria)",
+  "Fungal decomposers",
+  "Other slow-growing soil bacteria"
+)
+
+# 关键：命名颜色向量（名字必须和 guild_levels 完全一致）
+myPalette_named <- c(
+  "Arid/biocrust Actinobacteria"              = "#8DD3C7",
+  "N cycling (nitrifiers)"                    = "#81d4fa",
+  "Proteobacteria (rhizosphere/fast-growing)" = "#F66A62",
+  "Oligotroph/soil core (Acidobacteria)"      = "#aed581",
+  "Fungal decomposers"                        = "#F8985C",
+  "Other slow-growing soil bacteria"          = "#ce93d8"
+)
+
+imp20_plot <- imp20_plot %>%
+  mutate(
+    guild = factor(guild, levels = guild_levels),
+    var   = fct_reorder(var, mean_rel_inf)   # 按 mean_rel_inf 排序
+  )
+
+imp20_plot <- imp20_plot %>%
+  arrange(desc(mean_rel_inf)) %>%
+  mutate(
+    var = factor(var, levels = var)   # 保持当前顺序
+  )
+
+
+ggplot(imp20_plot, aes(x = mean_rel_inf, y = forcats::fct_rev(var))) +
+  geom_col(aes(fill = guild), width = 0.75, alpha = 0.9) +
+  scale_fill_manual(
+    values = myPalette_named,
+    limits = guild_levels,   # 固定legend顺序 + 不匹配就直接报/显示不出来
+    drop = FALSE             # 即使某类没出现也保留（现在都出现了）
+  ) +
+  geom_point(aes(size = freq), color = "#90a4ae", alpha = 0.8) +
+  scale_size_continuous(range = c(1.5, 4.5)) +
+  labs(x = "Mean relative influence (GBM)", y = NULL, fill = NULL, size = "Fold freq") +
+  theme_classic(base_size = 16) +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(size = 16, colour = "black"),
+    axis.text.y = element_text(size = 16, colour = "black")
+  )
+
+
+ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_top20-ks.pdf",width = 8,height = 6) 
+
+
+
+ df_combin <- read.delim('~/Desktop/replot/restoration_pre/randomforest/combined_y_c-sd-si.txt',row.names = 1,
+                         stringsAsFactors = FALSE, check.names = FALSE,
+                         header = T, sep = "\t")
+ 
+ nrow(df_combin)
+ df_combin$kind <- factor(df_combin$kind,levels = c('SD','SI'))
+ myPalette <- c('#6D4C41','#9E9D27')
+ my.formula <- y ~ x
+ 
+ 
+ library(ggplot2)
+ library(ggpubr)
+ 
+ # 线性拟合（原来的 my.formula 也可以用）
+ fit <- lm(test_y ~ pred_y, data = df_combin)
+ fit
+ 
+ r2 <- summary(fit)$r.squared
+ eq <- sprintf("y = %.3f + %.3f x", coef(fit)[1], coef(fit)[2])
+ 
+ residuals <- combined_y$test_y - combined_y$pred_y
+ RMSE <- sqrt(mean(residuals^2))
+ RMSE
+ 
+ 
+p2 <- ggplot(df_combin, aes(x = pred_y, y = test_y, color = kind)) +
+   geom_point(alpha = 0.5, size = 4) +
+   scale_color_manual(values = myPalette) +
+   geom_smooth(method = "lm", se = FALSE, color = "#004d40", size = 1.5) +
+   # xlim(15, 31) + ylim(15, 31) +
+   # annotate("text", x = 15, y = 30,
+   #          label = paste0(eq, "\nR² = ", round(r2, 3), "\nRMSE = ", round(RMSE, 3)),
+   #          size = 8, hjust = 0) +
+   xlab("Predicted Ks (m/day)") + ylab("Actual Ks (m/day)") +
+   theme_pubr(base_size = 20) +
+   theme(legend.position = "none")
+ 
+ 
+ ggplot(df_combin, aes(x = pred_y, y = test_y, color = kind)) +
+   geom_point(alpha = 0.5, size = 4) +
+   scale_color_manual(values = myPalette) +
+   geom_smooth(method = "lm", se = FALSE, color = "#004d40", size = 1.5) +
+   # xlim(1, 13) + ylim(1, 13) +
+    annotate("text", x = 6, y = 30,
+            label = paste0(eq, "\nR² = ", round(r2, 3), "\nRMSE = ", round(RMSE, 3)),
+           size = 8, hjust = 0) +
+   xlab("Predicted carbon (g/kg)") + ylab("Actual carbon (g/kg)") +
+   theme_pubr(base_size = 20) +
+   theme(legend.position = "none")
+ 
+p1
+ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.ks.pdf",width = 5,height = 4) 
+ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.c.pdf",width = 5,height = 4) 
+ 
+ 
+ ggplot(df_combin, aes(x = pred_y, y = test_y, color = kind)) +
+   geom_point(alpha = 0.5, size = 4) +
+   scale_color_manual(values = myPalette) +
+   geom_smooth(method = "lm", se = FALSE, color = "#004d40", size = 1.5) +
+ #  xlim(15, 31) + ylim(15, 31) +
+   annotate("text", x = 5, y = 3,
+            label = paste0(eq, "\nR² = ", round(r2, 3), "\nRMSE = ", round(RMSE, 3)),
+            size = 8, hjust = 0) +
+   xlab("Predicted Ks (m/day)") + ylab("Actual Ks (m/day)") +
+   theme_pubr(base_size = 25) +
+   theme(legend.position = "none")
+ 
+ 
+ # Calculate RMSE
+ residuals <- combined_y$test_y - combined_y$pred_y
+ RMSE <- sqrt(mean(residuals^2))
+ RMSE
+
+ 
+ p2 <- ggplot(df_combin, aes(x = pred_y, y = test_y,color = type, group = 1)) +
+   geom_point(alpha=0.5,size = 4) + scale_color_manual(values = myPalette) +
+   geom_smooth(method = "glm", se=FALSE, formula = my.formula, color = c("#004d40"),size = 1.5) +
+   stat_poly_eq(formula = my.formula, 
+                label.x = c(0.1),
+                aes(label = paste(..rr.label..)), size=8,
+                parse = TRUE) + xlim(15,31) + ylim(15,31) + 
+   annotate("text", x = 15, y = 28, label = paste("RMSE =", round(RMSE, 3)), size = 8, hjust = 0) +
+   xlab("Predicted Ks (m/day)") + ylab("Actual Ks (m/day)") +
+   theme_pubr(base_size = 16) + theme(legend.position="none") 
+ p2
+ 
+ p1 <- ggplot(df_combin, aes(x = pred_y, y = test_y,color = type, group = 1)) +
+   geom_point(alpha=0.5,size = 4) + scale_color_manual(values = myPalette) +
+   geom_smooth(method = "lm", se=FALSE, formula = my.formula, color = c("#004d40"),size = 1.5) +
+   stat_poly_eq(formula = my.formula, 
+                label.x = c(0.1),
+                aes(label = paste(..rr.label..)), size=8,
+                parse = TRUE) + xlim(1,16) + ylim(1,16) +
+   annotate("text", x = 1, y = 13, label = paste("RMSE =", round(RMSE, 3)), size = 8, hjust = 0) +
+   xlab("Predicted carbon (g/kg)") + ylab("Actual carbon (g/kg)") +
+   theme_pubr(base_size = 25) + theme(legend.position="none") 
+ p1
+ ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.ks.pdf",width = 6,height = 5) 
+ ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/cgf_inpor_pre_act.ks.re.pdf",width = 5,height = 4) 
+ 
+ 
+ df1 <- data.frame(importance_otu_list)
+ View(df)
+ library(tidyverse)
+ # Reshape the dataframe
+ 
+ df2 <- data.frame()
+ 
+ num_columns <- ncol(df1)
+ 
+ for (i in seq(1, num_columns, by = 2)) {
+   temp_df <- df1[, c(i, i+1)]
+   colnames(temp_df) <- c("var", "rel.inf")
+   
+   df2 <- rbind(df2, temp_df)
+ }
+ 
+ 
+ # View(df2_mean)
+ # 
+ df2_mean <- df2 %>% group_by(var) %>% summarise_all(funs(mean))
+ df2_mean <- df2_mean[order(df2_mean$rel.inf, decreasing = TRUE), ]
+ df2_mean <- data.frame(df2_mean)
+ write.table(df2_mean,'~/Desktop/replot/restoration_pre/randomforest/import.cgf.ks.30.resample.txt',
+             sep = '\t', col.names = NA, quote = FALSE)
+ 
+ 
+ # top 20 for ks and carbon
+ mydata <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/impot.20.resample.txt',
+                      sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+ mydata <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/import.20.ks.resample.txt',
+                      sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+ View(mydata)
+ mydata$Type <- as.factor(mydata$Type)
+ library(ggpubr)
+ 
+ ggbarplot(mydata, y = "Relative influence", x = "Var",
+           fill = "Type",               # change fill color by cyl
+           color = "white",            # Set bar border colors to white
+           palette = c('#8DD3C7','#F8985C','#81d4fa','#F66A62','#aed581','#ce93d8'),            # jco journal color palett. see ?ggpar
+           sort.val = "asc",          # Sort the value in dscending order
+           sort.by.groups = FALSE,     # Don't sort inside each group
+           x.text.angle = 90           # Rotate vertically x axis texts
+ ) + ylab('Relative influence (%)') + theme_pubr(base_size = 16) + scale_y_continuous(limits = c(0, 7)) + xlab('') +
+   coord_flip() + theme(legend.position = "right") 
+ 
+ #carbon
+ ggbarplot(mydata, y = "Relative influence", x = "Var",
+           fill = "Type",               # change fill color by cyl
+           color = "white",            # Set bar border colors to white
+           palette = c('#8DD3C7','#F8985C','#ADA8CB','#F66A62','#fff59d'),            # jco journal color palett. see ?ggpar
+           sort.val = "asc",          # Sort the value in dscending order
+           sort.by.groups = FALSE,     # Don't sort inside each group
+           x.text.angle = 90           # Rotate vertically x axis texts
+ ) + ylab('Relative influence (%)') + theme_pubr(base_size = 16) + scale_y_continuous(limits = c(0, 15)) + xlab('') +
+   coord_flip() + theme(legend.position = "right") 
+ 
+ ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/cgf_inpor_20_c.10.pdf",width = 9,height = 6) 
+ ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/cgf_inpor_20_ks.10.pdf",width = 9,height = 6) 
+ 
+ #to plot what the variables look like by GLM
+ importance_otu.select <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/import.cgf.c.top30.resample10.txt',
+                                     row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+ importance_otu.select <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/import.cgf.ks.30.resample.txt',
+                                     row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+ 
+ otu_id.select <- rownames(importance_otu.select)
+ otu.select <- otu_group[ ,c(otu_id.select, 'type')]
+ 
+ otu.select <- as.data.frame(apply(otu.select,2,as.numeric))
+ View(otu.select)
+ # Convert y to numeric (if necessary)
+ age <- as.numeric(otu.select$type)
+ 
+ # Create a list of response variables
+ response_vars <- colnames(otu.select)[1:30]
+ 
+ # Create an empty data frame to store the results
+ results <- data.frame(response_var = numeric(),
+                       slope_coeff = numeric(),
+                       p_value = numeric(),
+                       adj_r_square = numeric(),
+                       stringsAsFactors = FALSE)
+ 
+ #family = quasipoisson(link = "log")
+ # Loop over the response variables and fit a GLM for each
+ for (i in seq_along(response_vars)) {
+   # Fit the GLM with Poisson error distribution and log link function
+   model <- glm(otu.select[, response_vars[i]] ~ age, data = otu.select)
+   # Check assumptions and extract slope coefficient and p-value for whole model
+   
+   #model <- glm(data[, response_vars[i]] ~ age, data = data)
+   # norm_test <- shapiro.test(resid(model)) #to perform the Shapiro-Wilk normality test on a vector or a data frame column
+   # print(norm_test)
+   p_val <- summary(model)$coefficients[2,4]
+   print(p_val)
+   slope_coeff <- summary(model)$coefficients[2, 1]
+   adj_r_square <- with(summary(model), 1 - deviance/null.deviance)
+   
+   # Adjust p-value using BH method
+   #adj_p_val <- p.adjust(p_val, method = "BH")
+   
+   # Store the results in the data frame
+   results[i, ] <- list(response_var = response_vars[i],
+                        slope_coeff = slope_coeff,
+                        p_value = p_val,
+                        adj_r_square = adj_r_square)
+ }
+ 
+ final_result <- cbind(results,padjust = p.adjust(results[,"p_value"], method="BH"))
+ 
+ View(final_result)
+ table(final_result$padjust < 0.05)
+ table(final_result$padjust < 0.1)
+ View(results)
+ 
+ write.table(final_result, '~/Desktop/replot/restoration_pre/randomforest/carbon_variables_glm.txt',sep="\t", col.names = NA,quote = FALSE)
+ 
+ df1 <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/import.cgf.ks.30.resample.txt',
+                   row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+ df2 <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/ks_variables_glm.txt',
+                   row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+ 
+ df1 <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/import.cgf.c.top30.resample10.txt',
+                   row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+ df2 <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/carbon_variables_glm.txt',
+                   row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+ 
+ df <- merge(df1, df2, id = c('response_var'))
+ write.table(df, '~/Desktop/replot/restoration_pre/randomforest/c_variables_glm_tables.txt',sep="\t", col.names = NA,quote = FALSE)
+ # write.table(otu.select,'~/Desktop/replot/restoration_pre/randomforest/import.30.ks.variable.plot.txt',
+ #                       sep = '\t', col.names = NA, quote = FALSE)
+ # 
+ # mydata <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/import.30.ks.variable.plot.txt',
+ #                                     row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+ 
+ View(otu.select)
+ otu.select.melt <- reshape2::melt(otu.select, id = 'type')
+ my.formula <- y ~ x
+ 
+ ggplot(otu.select.melt, aes(x = type, y = value)) +
+   geom_point() +
+   geom_smooth(method = "glm", formula = my.formula) +
+   facet_wrap(~variable, ncol = 5, scale = 'free_y') +
+   stat_poly_eq(formula = my.formula,
+                aes(label = paste("italic(beta) == ", 
+                                  sprintf("%.2f", round(..b.1.., digits = 2)),
+                                  sep = "")),
+                label.x = 0.1,
+                label.y = "bottom",
+                size = 3,
+                parse = TRUE) +
+   labs(title = '', x = 'Ks (m/day)', y = 'Relative abundance')
+ 
+ ggplot(otu.select.melt, aes(x = type, y = value)) +
+   geom_point() +
+   geom_smooth(method = "glm",formula = my.formula) +
+   #  geom_smooth(method = "glm", se=FALSE, formula = my.formula, color = c("#004d40"),size = 1.5) +
+   facet_wrap(~variable, ncol = 5, scale = 'free_y') +
+   stat_poly_eq(formula = my.formula, 
+                label.x = c(0.1),
+                aes(label = paste(..rr.label..)), size=3,
+                parse = TRUE) +
+   labs(title = '',x = 'Ks (m/day)', y = 'Relative abundance')
+```

@@ -1,0 +1,4257 @@
+---
+title: "Desert restoration project -- Part 7: Siderophore-associated patterns across the field chronosequence"
+author: "Qiong_Chen"
+date: "2026-08-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+source("00_setup.R")
+```
+
+# 7. Siderophore-associated patterns across the field chronosequence
+
+## 7.1 FeGenie siderophore-associated genes
+
+```{r field-fegenie-genes}
+# DNA-scaled
+library(tidyverse)
+library(patchwork)
+library(broom)
+
+
+# 1. Paths
+
+
+data_dir <- "~/Desktop/replot/culture/field-isolation/strain/fegenie_summary/independent315_summary"
+out_dir  <- file.path(data_dir, "figures")
+
+dir.create(
+  out_dir,
+  showWarnings = FALSE,
+  recursive = TRUE
+)
+
+master_file <- file.path(
+  data_dir,
+  "FeGenie_independent315_sample_master.tsv"
+)
+
+rpkm_file <- file.path(
+  data_dir,
+  "FeGenie_independent315_centroid_RPKM_matrix.tsv"
+)
+
+family_file <- file.path(
+  data_dir,
+  "FeGenie_centroid_to_family.tsv"
+)
+
+# 2. Metadata
+
+
+metadata <- read.table(
+  "~/Desktop/replot/culture/field-isolation/strain/metadata.txt",
+  header = TRUE,
+  sep = "",
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+
+metadata <- as_tibble(metadata[, 1:4])
+
+names(metadata) <- c(
+  "SeqID",
+  "DNA",
+  "Group_raw",
+  "Type"
+)
+
+metadata <- metadata %>%
+  mutate(
+    SeqID = as.character(SeqID),
+    DNA = as.numeric(DNA),
+    Type = trimws(Type),
+    Group_numeric = suppressWarnings(
+      as.numeric(Group_raw)
+    ),
+    Analysis_group = case_when(
+      Type == "SD" ~ "SD",
+      Type == "SI" &
+        Group_numeric %in% c(11, 12, 14, 15, 17) ~
+        as.character(Group_numeric),
+      TRUE ~ NA_character_
+    ),
+    Analysis_group = factor(
+      Analysis_group,
+      levels = c("SD", "11", "12", "14", "15", "17")
+    ),
+    plot_x = if_else(
+      Type == "SD",
+      10,
+      Group_numeric
+    )
+  ) %>%
+  filter(
+    !is.na(Analysis_group),
+    !is.na(DNA)
+  )
+
+# 3. Sample-level results
+
+
+master <- read.delim(
+  master_file,
+  check.names = FALSE
+) %>%
+  as_tibble()
+
+names(master)[1] <- "sample"
+
+master <- master %>%
+  mutate(
+    sample = as.character(sample),
+    SeqID = str_extract(sample, "^[0-9]+")
+  ) %>%
+  left_join(
+    metadata,
+    by = "SeqID"
+  ) %>%
+  filter(
+    !is.na(Analysis_group),
+    !is.na(DNA)
+  ) %>%
+  mutate(
+    total_RPKM = as.numeric(
+      siderophore_total_RPKM
+    ),
+    family_richness = as.numeric(
+      siderophore_detected_HMM_richness
+    ),
+    
+    # Scale relative gene abundance by DNA concentration
+    DNA_scaled_total_RPKM = total_RPKM * DNA,
+    
+    # Response used for statistical analysis and plotting
+    abundance_value = asinh(
+      DNA_scaled_total_RPKM
+    )
+  )
+
+
+# 4. Centroid RPKM and family classification
+
+centroid_RPKM <- read.delim(
+  rpkm_file,
+  check.names = FALSE
+) %>%
+  as_tibble()
+
+names(centroid_RPKM)[1] <- "sample"
+
+family_map <- read.delim(
+  family_file,
+  check.names = FALSE
+) %>%
+  as_tibble()
+
+names(family_map)[1:2] <- c(
+  "centroid",
+  "gene_family"
+)
+
+family_map <- family_map %>%
+  mutate(
+    gene_family = str_remove(
+      gene_family,
+      "-family-siderophore-synthesis$"
+    ),
+    synthesis_system = case_when(
+      str_detect(gene_family, "^Pvd") ~
+        "Pyoverdine-associated synthesis",
+      
+      str_detect(gene_family, "^Pch") ~
+        "Pyochelin-associated synthesis",
+      
+      str_detect(gene_family, "^Pvs") ~
+        "Vibrioferrin-associated synthesis",
+      
+      str_detect(gene_family, "^Rhb") ~
+        "Rhizobactin-associated synthesis",
+      
+      str_detect(gene_family, "^Iuc") ~
+        "Aerobactin-associated synthesis",
+      
+      TRUE ~
+        "Other siderophore synthesis systems"
+    )
+  )
+
+centroid_names <- intersect(
+  names(centroid_RPKM),
+  family_map$centroid
+)
+
+cat(
+  "Matched reference genes:",
+  length(centroid_names),
+  "\n"
+)
+
+
+# 5. Sum RPKM by siderophore synthesis system
+
+
+system_RPKM <- centroid_RPKM %>%
+  select(
+    sample,
+    all_of(centroid_names)
+  ) %>%
+  pivot_longer(
+    cols = all_of(centroid_names),
+    names_to = "centroid",
+    values_to = "RPKM"
+  ) %>%
+  mutate(
+    RPKM = replace_na(
+      as.numeric(RPKM),
+      0
+    )
+  ) %>%
+  left_join(
+    family_map %>%
+      select(
+        centroid,
+        synthesis_system
+      ),
+    by = "centroid"
+  ) %>%
+  group_by(
+    sample,
+    synthesis_system
+  ) %>%
+  summarise(
+    system_RPKM = sum(
+      RPKM,
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  )
+
+system_names <- sort(
+  unique(family_map$synthesis_system)
+)
+
+system_RPKM <- system_RPKM %>%
+  complete(
+    sample = unique(master$sample),
+    synthesis_system = system_names,
+    fill = list(system_RPKM = 0)
+  ) %>%
+  left_join(
+    master %>%
+      select(
+        sample,
+        SeqID,
+        DNA,
+        Type,
+        Analysis_group,
+        Group_numeric,
+        plot_x
+      ),
+    by = "sample"
+  ) %>%
+  filter(
+    !is.na(Analysis_group),
+    !is.na(DNA)
+  ) %>%
+  mutate(
+    # Scale relative gene abundance by DNA concentration
+    DNA_scaled_system_RPKM = system_RPKM * DNA,
+    
+    # Response used for statistical analysis and plotting
+    system_value = asinh(
+      DNA_scaled_system_RPKM
+    ),
+    
+    synthesis_system = factor(
+      synthesis_system,
+      levels = c(
+        "Pyoverdine-associated synthesis",
+        "Pyochelin-associated synthesis",
+        "Vibrioferrin-associated synthesis",
+        "Rhizobactin-associated synthesis",
+        "Aerobactin-associated synthesis",
+        "Other siderophore synthesis systems"
+      )
+    )
+  )
+
+
+# 6. GLM functions
+#    Only SI samples from restoration years 11–17 are modeled
+#    DNA is incorporated into the response and is therefore
+#    not included as a model covariate.
+
+
+glm_statistics <- function(data, response, metric) {
+  
+  model_data <- data %>%
+    filter(
+      Type == "SI",
+      !is.na(Group_numeric),
+      is.finite(.data[[response]])
+    )
+  
+  model <- glm(
+    reformulate(
+      "Group_numeric",
+      response = response
+    ),
+    data = model_data,
+    family = gaussian()
+  )
+  
+  tidy(
+    model,
+    conf.int = TRUE
+  ) %>%
+    filter(
+      term == "Group_numeric"
+    ) %>%
+    transmute(
+      metric = metric,
+      n = nrow(model_data),
+      GLM_beta_per_year = estimate,
+      standard_error = std.error,
+      confidence_interval_lower = conf.low,
+      confidence_interval_upper = conf.high,
+      P_value = p.value
+    )
+}
+
+
+glm_prediction <- function(data, response) {
+  
+  model_data <- data %>%
+    filter(
+      Type == "SI",
+      !is.na(Group_numeric),
+      is.finite(.data[[response]])
+    )
+  
+  model <- glm(
+    reformulate(
+      "Group_numeric",
+      response = response
+    ),
+    data = model_data,
+    family = gaussian()
+  )
+  
+  prediction_data <- tibble(
+    Group_numeric = seq(
+      11,
+      17,
+      length.out = 100
+    )
+  )
+  
+  prediction <- predict(
+    model,
+    newdata = prediction_data,
+    se.fit = TRUE
+  )
+  
+  prediction_data %>%
+    mutate(
+      fitted = as.numeric(prediction$fit),
+      lower = fitted -
+        1.96 * as.numeric(prediction$se.fit),
+      upper = fitted +
+        1.96 * as.numeric(prediction$se.fit)
+    )
+}
+
+
+# 7. GLM statistics
+
+
+overall_statistics <- bind_rows(
+  glm_statistics(
+    master,
+    "abundance_value",
+    paste(
+      "DNA-scaled total siderophore",
+      "biosynthesis gene abundance"
+    )
+  ),
+  glm_statistics(
+    master,
+    "family_richness",
+    paste(
+      "Number of detected siderophore",
+      "biosynthesis gene families"
+    )
+  )
+)
+
+system_statistics <- system_RPKM %>%
+  group_by(
+    synthesis_system
+  ) %>%
+  group_modify(
+    ~ glm_statistics(
+      .x,
+      "system_value",
+      as.character(.y$synthesis_system)
+    )
+  ) %>%
+  ungroup()
+
+statistics_table <- bind_rows(
+  overall_statistics,
+  system_statistics
+) %>%
+  mutate(
+    FDR = p.adjust(
+      P_value,
+      method = "BH"
+    ),
+    trend = case_when(
+      GLM_beta_per_year < 0 ~ "Decreasing",
+      GLM_beta_per_year > 0 ~ "Increasing",
+      TRUE ~ "No change"
+    )
+  )
+
+write_tsv(
+  statistics_table,
+  file.path(
+    out_dir,
+    "Independent315_DNA_scaled_RPKM_GLM_statistics.tsv"
+  )
+)
+
+print(
+  statistics_table,
+  n = Inf
+)
+
+# 7. Prediction lines
+
+abundance_prediction <- glm_prediction(
+  master,
+  "abundance_value"
+)
+
+richness_prediction <- glm_prediction(
+  master,
+  "family_richness"
+)
+
+system_prediction <- system_RPKM %>%
+  group_by(
+    synthesis_system
+  ) %>%
+  group_modify(
+    ~ glm_prediction(
+      .x,
+      "system_value"
+    )
+  ) %>%
+  ungroup()
+
+
+# 9. Colors and theme
+
+
+group_colors <- c(
+  "SD" = "#F4A64E",
+  "11" = "#E7E88E",
+  "12" = "#C9D579",
+  "14" = "#A5B86E",
+  "15" = "#7E9A59",
+  "17" = "#526F43"
+)
+
+trend_color <- "#0d47a1"
+
+plot_theme <- theme_classic(
+  base_size = 14
+) +
+  theme(
+    axis.text = element_text(
+      color = "black"
+    ),
+    axis.title = element_text(
+      color = "black"
+    ),
+    strip.background = element_rect(
+      fill = "white",
+      color = "#777777",
+      linewidth = 0.4
+    ),
+    strip.text = element_text(
+      color = "black",
+      size = 14
+    ),
+    plot.title = element_text(
+      size = 14,
+      face = "plain"
+    ),
+    legend.position = "none"
+  )
+
+x_scale <- scale_x_continuous(
+  breaks = c(
+    10,
+    11,
+    12,
+    14,
+    15,
+    17
+  ),
+  labels = c(
+    "SD",
+    "11",
+    "12",
+    "14",
+    "15",
+    "17"
+  ),
+  limits = c(
+    9.4,
+    17.4
+  )
+)
+
+
+# 10. Panel A: DNA-scaled total synthesis abundance
+
+
+panel_A <- ggplot(
+  master,
+  aes(
+    plot_x,
+    abundance_value
+  )
+) +
+  geom_boxplot(
+    aes(
+      group = Analysis_group,
+      fill = Analysis_group
+    ),
+    width = 0.65,
+    outlier.shape = NA,
+    color = "#333333",
+    linewidth = 0.45
+  ) +
+  geom_jitter(
+    aes(
+      color = Analysis_group
+    ),
+    width = 0.12,
+    size = 1.2,
+    alpha = 0.65
+  ) +
+  geom_ribbon(
+    data = abundance_prediction,
+    aes(
+      x = Group_numeric,
+      ymin = lower,
+      ymax = upper
+    ),
+    inherit.aes = FALSE,
+    fill = trend_color,
+    alpha = 0.12
+  ) +
+  geom_line(
+    data = abundance_prediction,
+    aes(
+      Group_numeric,
+      fitted
+    ),
+    inherit.aes = FALSE,
+    color = trend_color,
+    linewidth = 0.8
+  ) +
+  scale_fill_manual(
+    values = group_colors
+  ) +
+  scale_color_manual(
+    values = group_colors
+  ) +
+  x_scale +
+  labs(
+    title = paste(
+      "Total siderophore biosynthesis",
+      "gene abundance"
+    ),
+    x = NULL,
+    y = "asinh(RPKM × DNA)"
+  ) +
+  plot_theme
+
+
+
+# 11. Panel B: detected synthesis gene families
+
+panel_B <- ggplot(
+  master,
+  aes(
+    plot_x,
+    family_richness
+  )
+) +
+  geom_boxplot(
+    aes(
+      group = Analysis_group,
+      fill = Analysis_group
+    ),
+    width = 0.65,
+    outlier.shape = NA,
+    color = "#333333",
+    linewidth = 0.45
+  ) +
+  geom_jitter(
+    aes(
+      color = Analysis_group
+    ),
+    width = 0.12,
+    size = 1.2,
+    alpha = 0.65
+  ) +
+  geom_ribbon(
+    data = richness_prediction,
+    aes(
+      x = Group_numeric,
+      ymin = lower,
+      ymax = upper
+    ),
+    inherit.aes = FALSE,
+    fill = trend_color,
+    alpha = 0.12
+  ) +
+  geom_line(
+    data = richness_prediction,
+    aes(
+      Group_numeric,
+      fitted
+    ),
+    inherit.aes = FALSE,
+    color = trend_color,
+    linewidth = 0.8
+  ) +
+  scale_fill_manual(
+    values = group_colors
+  ) +
+  scale_color_manual(
+    values = group_colors
+  ) +
+  x_scale +
+  labs(
+    title = paste(
+      "Number of detected siderophore",
+      "biosynthesis gene families"
+    ),
+    x = NULL,
+    y = "Number of gene families"
+  ) +
+  plot_theme
+
+
+
+# 12. Panel C: DNA-scaled synthesis-system abundance
+
+
+panel_C <- ggplot(
+  system_RPKM,
+  aes(
+    plot_x,
+    system_value
+  )
+) +
+  geom_boxplot(
+    aes(
+      group = Analysis_group,
+      fill = Analysis_group
+    ),
+    width = 0.65,
+    outlier.shape = NA,
+    color = "#333333",
+    linewidth = 0.4
+  ) +
+  geom_jitter(
+    aes(
+      color = Analysis_group
+    ),
+    width = 0.12,
+    size = 0.9,
+    alpha = 0.55
+  ) +
+  geom_ribbon(
+    data = system_prediction,
+    aes(
+      x = Group_numeric,
+      ymin = lower,
+      ymax = upper
+    ),
+    inherit.aes = FALSE,
+    fill = trend_color,
+    alpha = 0.12
+  ) +
+  geom_line(
+    data = system_prediction,
+    aes(
+      Group_numeric,
+      fitted
+    ),
+    inherit.aes = FALSE,
+    color = trend_color,
+    linewidth = 0.7
+  ) +
+  facet_wrap(
+    ~ synthesis_system,
+    ncol = 3,
+    scales = "free_y"
+  ) +
+  scale_fill_manual(
+    values = group_colors
+  ) +
+  scale_color_manual(
+    values = group_colors
+  ) +
+  x_scale +
+  labs(
+    x = "Restoration year",
+    y = "asinh(summed RPKM × DNA)"
+  ) +
+  plot_theme
+
+
+
+# 13. Display and save plots
+
+
+panel_A
+panel_B
+panel_C
+
+ggsave(filename = '~/Desktop/replot/culture/field-isolation/strain/field-siderophore.pdf',width = 11, height = 5)  
+```
+
+## 7.2 F8 DFOE-associated gene homologues
+
+```{r field-dfoe-gene-homologues}
+
+library(tidyverse)
+library(broom)
+
+
+# 1. Files
+
+setwd(
+  "/Users/chenqiong/Desktop/replot/culture/field-isolation/strain"
+)
+
+master_file <- paste0(
+  "independent18_summary/",
+  "DFOE_independent18_sample_master.tsv"
+)
+
+output_dir <- "independent18_summary/figures"
+
+dir.create(
+  output_dir,
+  showWarnings = FALSE,
+  recursive = TRUE
+)
+
+# 2. Metadata
+
+metadata <- read.table(
+  "metadata.txt",
+  header = TRUE,
+  sep = "",
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+
+metadata <- as_tibble(metadata[, 1:4])
+
+names(metadata) <- c(
+  "SeqID",
+  "DNA",
+  "Group_raw",
+  "Type"
+)
+
+metadata <- metadata %>%
+  mutate(
+    SeqID = as.character(SeqID),
+    DNA = as.numeric(DNA),
+    Type = trimws(Type),
+    Group_numeric = suppressWarnings(
+      as.numeric(Group_raw)
+    ),
+    Analysis_group = case_when(
+      Type == "SD" ~ "SD",
+      Type == "SI" &
+        Group_numeric %in% c(11, 12, 14, 15, 17) ~
+        as.character(Group_numeric),
+      TRUE ~ NA_character_
+    ),
+    Analysis_group = factor(
+      Analysis_group,
+      levels = c("SD", "11", "12", "14", "15", "17")
+    ),
+    plot_x = if_else(
+      Type == "SD",
+      10,
+      Group_numeric
+    )
+  ) %>%
+  filter(
+    !is.na(Analysis_group),
+    !is.na(DNA)
+  )
+
+# 3. DFOE results
+
+dfoe <- read.delim(
+  master_file,
+  check.names = FALSE
+) %>%
+  as_tibble() %>%
+  mutate(
+    sample = as.character(sample),
+    SeqID = str_extract(sample, "^[0-9]+")
+  ) %>%
+  left_join(
+    metadata,
+    by = "SeqID"
+  ) %>%
+  filter(
+    !is.na(Analysis_group),
+    !is.na(DNA)
+  )
+
+
+# 4. Long-format plotting data
+
+
+metric_labels <- c(
+  "00626_total_RPKM" =
+    "ddc-like",
+  
+  "00627_total_RPKM" =
+    "iucD-like",
+  
+  "00628_total_RPKM" =
+    "bibC-like",
+  
+  "max_core3_mean_RPKM" =
+    "Collinear three-gene module"
+)
+
+plot_data <- dfoe %>%
+  select(
+    sample,
+    SeqID,
+    DNA,
+    Type,
+    Analysis_group,
+    Group_numeric,
+    plot_x,
+    all_of(names(metric_labels))
+  ) %>%
+  pivot_longer(
+    cols = all_of(names(metric_labels)),
+    names_to = "metric",
+    values_to = "RPKM"
+  ) %>%
+  mutate(
+    RPKM = replace_na(
+      as.numeric(RPKM),
+      0
+    ),
+    
+    # Scale relative abundance by DNA concentration
+    DNA_scaled_RPKM = RPKM * DNA,
+    
+    # Response variable
+    plot_value = asinh(
+      DNA_scaled_RPKM
+    ),
+    
+    metric_label = recode(
+      metric,
+      !!!metric_labels
+    ),
+    
+    metric_label = factor(
+      metric_label,
+      levels = unname(metric_labels)
+    )
+  )
+
+
+
+# 5. GLM
+#    DNA is incorporated into the response and is therefore
+#    not included as a model covariate.
+
+
+fit_GLM <- function(data) {
+  
+  model_data <- data %>%
+    filter(
+      Type == "SI",
+      Group_numeric %in% c(11, 12, 14, 15, 17),
+      !is.na(Group_numeric),
+      is.finite(plot_value)
+    )
+  
+  model <- glm(
+    plot_value ~ Group_numeric,
+    data = model_data,
+    family = gaussian()
+  )
+  
+  result <- tidy(
+    model,
+    conf.int = TRUE
+  ) %>%
+    filter(
+      term == "Group_numeric"
+    )
+  
+  tibble(
+    n_SI = nrow(model_data),
+    GLM_beta_per_year = result$estimate,
+    standard_error = result$std.error,
+    confidence_interval_lower = result$conf.low,
+    confidence_interval_upper = result$conf.high,
+    P_value = result$p.value
+  )
+}
+
+statistics_table <- plot_data %>%
+  group_by(
+    metric,
+    metric_label
+  ) %>%
+  group_modify(
+    ~ fit_GLM(.x)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    FDR = p.adjust(
+      P_value,
+      method = "BH"
+    ),
+    trend = case_when(
+      GLM_beta_per_year < 0 ~ "Decreasing",
+      GLM_beta_per_year > 0 ~ "Increasing",
+      TRUE ~ "No change"
+    )
+  )
+
+write_tsv(
+  statistics_table,
+  file.path(
+    output_dir,
+    "DFOE_independent18_DNA_scaled_RPKM_GLM_statistics.tsv"
+  )
+)
+
+print(
+  statistics_table,
+  n = Inf
+)
+
+# 6. GLM prediction lines
+
+
+make_prediction <- function(data) {
+  
+  model_data <- data %>%
+    filter(
+      Type == "SI",
+      Group_numeric %in% c(11, 12, 14, 15, 17),
+      !is.na(Group_numeric),
+      is.finite(plot_value)
+    )
+  
+  model <- glm(
+    plot_value ~ Group_numeric,
+    data = model_data,
+    family = gaussian()
+  )
+  
+  prediction_data <- tibble(
+    Group_numeric = seq(
+      11,
+      17,
+      length.out = 100
+    )
+  )
+  
+  prediction <- predict(
+    model,
+    newdata = prediction_data,
+    se.fit = TRUE
+  )
+  
+  prediction_data %>%
+    mutate(
+      fitted = as.numeric(
+        prediction$fit
+      ),
+      lower = fitted -
+        1.96 * as.numeric(prediction$se.fit),
+      upper = fitted +
+        1.96 * as.numeric(prediction$se.fit)
+    )
+}
+
+prediction_data <- plot_data %>%
+  group_by(
+    metric,
+    metric_label
+  ) %>%
+  group_modify(
+    ~ make_prediction(.x)
+  ) %>%
+  ungroup()
+
+
+# 7. Plot style
+
+group_colors <- c(
+  "SD" = "#F4A64E",
+  "11" = "#E7E88E",
+  "12" = "#C9D579",
+  "14" = "#A5B86E",
+  "15" = "#7E9A59",
+  "17" = "#526F43"
+)
+
+trend_color <- "#0d47a1"
+
+
+
+# 7. Plot
+
+
+DFOE_figure <- ggplot(
+  plot_data,
+  aes(
+    x = plot_x,
+    y = plot_value
+  )
+) +
+  geom_boxplot(
+    aes(
+      group = Analysis_group,
+      fill = Analysis_group
+    ),
+    width = 0.65,
+    outlier.shape = NA,
+    color = "#333333",
+    linewidth = 0.45
+  ) +
+  geom_jitter(
+    aes(
+      color = Analysis_group
+    ),
+    width = 0.12,
+    height = 0,
+    size = 1.15,
+    alpha = 0.65
+  ) +
+  geom_ribbon(
+    data = prediction_data,
+    aes(
+      x = Group_numeric,
+      ymin = lower,
+      ymax = upper
+    ),
+    inherit.aes = FALSE,
+    fill = trend_color,
+    alpha = 0.12
+  ) +
+  geom_line(
+    data = prediction_data,
+    aes(
+      x = Group_numeric,
+      y = fitted
+    ),
+    inherit.aes = FALSE,
+    color = trend_color,
+    linewidth = 0.8
+  ) +
+  facet_wrap(
+    ~ metric_label,
+    ncol = 4,
+    scales = "free_y"
+  ) +
+  scale_fill_manual(
+    values = group_colors
+  ) +
+  scale_color_manual(
+    values = group_colors
+  ) +
+  scale_x_continuous(
+    breaks = c(
+      10,
+      11,
+      12,
+      14,
+      15,
+      17
+    ),
+    labels = c(
+      "SD",
+      "11",
+      "12",
+      "14",
+      "15",
+      "17"
+    ),
+    limits = c(
+      9.4,
+      17.4
+    )
+  ) +
+  labs(
+    x = "Restoration year",
+    y = "asinh(RPKM × DNA)"
+  ) +
+  theme_classic(
+    base_size = 14
+  ) +
+  theme(
+    text = element_text(
+      color = "black"
+    ),
+    axis.text = element_text(
+      color = "black"
+    ),
+    strip.background = element_rect(
+      fill = "white",
+      color = "#777777",
+      linewidth = 0.4
+    ),
+    strip.text = element_text(
+      size = 14,
+      color = "black"
+    ),
+    legend.position = "none",
+    panel.spacing = unit(
+      0.8,
+      "lines"
+    )
+  )
+
+print(DFOE_figure)
+
+ggsave(filename = '~/Desktop/replot/culture/field-isolation/strain/f8-field-gene.pdf',width = 11, height = 2.5)  
+```
+
+## 7.3 Field DFOE concentration
+```{r DFOE-field-concentarion}
+ library(tidyverse)
+   
+  
+   # 1. Read data
+   
+   df <- read.delim("dfoe-field.txt") %>%
+     mutate(
+       group = factor(
+         group,
+         levels = c("SD", "11", "12", "14", "15", "17")
+       ),
+       Group_numeric = suppressWarnings(
+         as.numeric(as.character(group))
+       ),
+       plot_x = ifelse(group == "SD", 10, Group_numeric)
+     )
+
+   # 2. Trend model: 11–17 years only
+   
+   si <- df %>%
+     filter(group != "SD")
+   
+   trend_model <- lm(
+     con ~ Group_numeric,
+     data = si
+   )
+   
+   trend_p <- summary(trend_model)$coefficients[
+     "Group_numeric", "Pr(>|t|)"
+   ]
+   
+   trend_label <- ifelse(
+     trend_p > 0.05,
+     "Linear trend, italic(P) > 0.05",
+     paste0(
+       "Linear trend, italic(P) == ",
+       formatC(trend_p, format = "e", digits = 2)
+     )
+   )
+   
+   # 3. Fitted trend and 95% confidence interval
+   
+   trend_prediction <- tibble(
+     Group_numeric = seq(11, 17, length.out = 200)
+   )
+   
+   trend_prediction <- bind_cols(
+     trend_prediction,
+     as_tibble(
+       predict(
+         trend_model,
+         newdata = trend_prediction,
+         interval = "confidence"
+       )
+     )
+   ) %>%
+     rename(
+       fitted = fit,
+       lower = lwr,
+       upper = upr
+     )
+   
+ 
+   # 4. Colors and theme
+   
+   group_colors <- c(
+     "SD" = "#F4A64E",
+     "11" = "#E7E88E",
+     "12" = "#C9D579",
+     "14" = "#A5B86E",
+     "15" = "#7E9A59",
+     "17" = "#526F43"
+   )
+   
+   trend_color <- "#0d47a1"
+   
+   plot_theme <- theme_classic(base_size = 16) +
+     theme(
+       axis.text = element_text(color = "black"),
+       axis.title = element_text(color = "black"),
+       axis.line = element_blank(),
+       panel.border = element_rect(
+         color = "black",
+         fill = NA,
+         linewidth = 0.8
+       ),
+       plot.title = element_text(
+         size = 16,
+         face = "plain"
+       ),
+       legend.position = "none"
+     )
+   
+   x_scale <- scale_x_continuous(
+     breaks = c(10, 11, 12, 14, 15, 17),
+     labels = c("SD", "11", "12", "14", "15", "17"),
+     limits = c(9.4, 17.4)
+   )
+   
+
+   # 5. Plot
+   
+   p <- ggplot(
+     df,
+     aes(plot_x, con)
+   ) +
+     geom_boxplot(
+       aes(
+         group = group,
+         fill = group
+       ),
+       width = 0.65,
+       outlier.shape = NA,
+       color = "#333333",
+       linewidth = 0.45
+     ) +
+     geom_jitter(
+       aes(color = group),
+       width = 0.12,
+       size = 1.6,
+       alpha = 0.65
+     ) +
+     geom_ribbon(
+       data = trend_prediction,
+       aes(
+         x = Group_numeric,
+         ymin = lower,
+         ymax = upper
+       ),
+       inherit.aes = FALSE,
+       fill = trend_color,
+       alpha = 0.12
+     ) +
+     geom_line(
+       data = trend_prediction,
+       aes(
+         x = Group_numeric,
+         y = fitted
+       ),
+       inherit.aes = FALSE,
+       color = trend_color,
+       linewidth = 0.8
+     ) +
+     # annotate(
+     #   "text",
+     #   x = 10.7,
+     #   y = Inf,
+     #   label = trend_label,
+     #   parse = TRUE,
+     #   hjust = 0,
+     #   vjust = 1.4,
+     #   size = 4
+     # ) +
+     scale_fill_manual(values = group_colors) +
+     scale_color_manual(values = group_colors) +
+     x_scale +
+     labs(
+       x = "Restoration year",
+       y = "DFOE concentration"
+     ) +
+     plot_theme 
+   
+   p
+   
+   
+   
+   ggsave(filename = '~/Desktop/replot/culture/field-isolation/strain/siderophore-field.pdf',
+          width = 4, height = 3) 
+   
+   
+   
+   # 仅分析11–17年的恢复趋势
+   si <- df %>% filter(group != "SD")
+   
+   # 1. 线性趋势
+   fit <- lm(con ~ year, data = si)
+   fit_sum <- summary(fit)$coefficients
+   
+   trend_result <- tibble(
+     test = "Linear trend (11–17 years)",
+     estimate_per_year = fit_sum["year", "Estimate"],
+     standard_error = fit_sum["year", "Std. Error"],
+     p_value = fit_sum["year", "Pr(>|t|)"]
+   )
+   
+   trend_result
+   # 2. Spearman趋势
+   sp <- cor.test(si$year, si$con, method = "spearman", exact = FALSE)
+   
+   spearman_result <- tibble(
+     test = "Spearman trend (11–17 years)",
+     estimate_per_year = unname(sp$estimate),
+     standard_error = NA_real_,
+     p_value = sp$p.value
+   )
+   
+   # 3. 11–17年各组总体差异
+   kw <- kruskal.test(con ~ group, data = si)
+   
+   kruskal_result <- tibble(
+     test = "Kruskal–Wallis test (11–17 years)",
+     estimate_per_year = NA_real_,
+     standard_error = NA_real_,
+     p_value = kw$p.value
+   )
+   
+   statistics_table <- bind_rows(
+     trend_result,
+     spearman_result,
+     kruskal_result
+   ) %>%
+     mutate(FDR = p.adjust(p_value, method = "BH"))
+   
+   print(statistics_table)
+   write_tsv(statistics_table, "DFOE_field_statistics.tsv")
+   
+   # 4. 各恢复年份两两比较
+   pairwise_result <- pairwise.wilcox.test(
+     x = si$con,
+     g = si$group,
+     p.adjust.method = "BH",
+     exact = FALSE
+   )
+   
+   pairwise_table <- as.data.frame(as.table(pairwise_result$p.value)) %>%
+     filter(!is.na(Freq)) %>%
+     rename(
+       group_1 = Var1,
+       group_2 = Var2,
+       adjusted_p_value = Freq
+     )
+   
+   print(pairwise_table)
+   write_tsv(pairwise_table, "DFOE_field_pairwise_comparisons.tsv")
+   
+   # 5. SD与全部恢复样本比较
+   sd_si <- wilcox.test(
+     con ~ ifelse(group == "SD", "SD", "Restored"),
+     data = df,
+     exact = FALSE
+   )
+   
+   sd_comparison <- tibble(
+     comparison = "SD vs restored sites",
+     p_value = sd_si$p.value
+   )
+   
+   print(sd_comparison)
+   write_tsv(sd_comparison, "DFOE_SD_vs_restored.tsv")
+
+```
+
+## 7.4 Field-extractable elements
+
+```{r Field-extractable elements}
+library(tidyverse)
+library(broom)
+
+
+# 1. Files and parameters
+
+
+input_file <- paste0(
+  "~/Desktop/replot/culture/field-84-2020/",
+  "dtpa-field.txt"
+)
+
+output_dir <- paste0(
+  "~/Desktop/replot/culture/field-84-2020/",
+  "dtpa-field-figures"
+)
+
+dir.create(
+  output_dir,
+  showWarnings = FALSE,
+  recursive = TRUE
+)
+
+group_levels <- c(
+  "SD", "11", "12", "14", "15", "17"
+)
+
+element_cols <- c(
+  "Al", "Ca", "Cd", "Cr", "Cu", "Fe",
+  "K", "Mg", "Mn", "Mo", "Na", "Ni",
+  "P", "Pb", "S", "Sb", "Sn", "Zn"
+)
+ 
+element_cols <- c(
+  "Fe", "Al", "Mn",
+  "Ca", "Mg", "K", "Na",
+  "P", "S",
+  "Zn", "Cu", "Ni", "Mo", "Cr",
+  "Cd", "Pb", "Sb", "Sn"
+)
+
+
+# 2. Read data
+
+mydata <- read.delim(
+  input_file,
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  header = TRUE,
+  sep = "\t"
+)
+
+element_cols <- intersect(
+  element_cols,
+  colnames(mydata)
+)
+
+cat(
+  "Elements included:",
+  paste(element_cols, collapse = ", "),
+  "\n"
+)
+
+mydata2 <- mydata %>%
+  mutate(
+    group = trimws(as.character(group)),
+    across(
+      all_of(element_cols),
+      as.numeric
+    )
+  )
+
+
+# 3. Blank correction
+
+blank_data <- mydata2 %>%
+  filter(
+    toupper(group) == "BLANK"
+  )
+
+if (nrow(blank_data) == 0) {
+  stop("No BLANK samples were found in the group column.")
+}
+
+blank_mean <- blank_data %>%
+  summarise(
+    across(
+      all_of(element_cols),
+      ~ mean(.x, na.rm = TRUE)
+    )
+  )
+
+df_blank_corrected <- mydata2 %>%
+  filter(
+    toupper(group) != "BLANK"
+  ) %>%
+  mutate(
+    across(
+      all_of(element_cols),
+      ~ .x - blank_mean[[cur_column()]]
+    )
+  ) %>%
+  mutate(
+    across(
+      all_of(element_cols),
+      ~ case_when(
+        is.na(.x) ~ NA_real_,
+        .x < 0 ~ 0,
+        TRUE ~ .x
+      )
+    )
+  )
+
+write_tsv(
+  df_blank_corrected,
+  file.path(
+    output_dir,
+    "dtpa-field-blank-corrected.tsv"
+  )
+)
+
+
+# 4. Long-format plotting data
+
+
+df_long <- df_blank_corrected %>%
+  mutate(
+    group = factor(
+      group,
+      levels = group_levels
+    ),
+    Group_numeric = suppressWarnings(
+      as.numeric(as.character(group))
+    ),
+    plot_x = if_else(
+      as.character(group) == "SD",
+      10,
+      Group_numeric
+    )
+  ) %>%
+  filter(
+    !is.na(group)
+  ) %>%
+  pivot_longer(
+    cols = all_of(element_cols),
+    names_to = "element",
+    values_to = "value"
+  ) %>%
+  mutate(
+    value = as.numeric(value),
+    element = factor(
+      element,
+      levels = element_cols
+    )
+  )
+
+# 5. GLM statistics
+#    Only restoration years 11–17 are modeled.
+#    SD is displayed but is not included in the GLM.
+
+
+fit_GLM <- function(data) {
+  
+  model_data <- data %>%
+    filter(
+      Group_numeric %in% c(11, 12, 14, 15, 17),
+      !is.na(Group_numeric),
+      is.finite(value)
+    )
+  
+  if (
+    nrow(model_data) < 3 ||
+    n_distinct(model_data$Group_numeric) < 2
+  ) {
+    return(
+      tibble(
+        n_SI = nrow(model_data),
+        GLM_beta_per_year = NA_real_,
+        standard_error = NA_real_,
+        confidence_interval_lower = NA_real_,
+        confidence_interval_upper = NA_real_,
+        P_value = NA_real_
+      )
+    )
+  }
+  
+  model <- glm(
+    value ~ Group_numeric,
+    data = model_data,
+    family = gaussian()
+  )
+  
+  result <- tidy(
+    model,
+    conf.int = TRUE
+  ) %>%
+    filter(
+      term == "Group_numeric"
+    )
+  
+  tibble(
+    n_SI = nrow(model_data),
+    GLM_beta_per_year = result$estimate,
+    standard_error = result$std.error,
+    confidence_interval_lower = result$conf.low,
+    confidence_interval_upper = result$conf.high,
+    P_value = result$p.value
+  )
+}
+
+statistics_table <- df_long %>%
+  group_by(
+    element
+  ) %>%
+  group_modify(
+    ~ fit_GLM(.x)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    FDR = p.adjust(
+      P_value,
+      method = "BH"
+    ),
+    trend = case_when(
+      GLM_beta_per_year < 0 ~ "Decreasing",
+      GLM_beta_per_year > 0 ~ "Increasing",
+      TRUE ~ "No change"
+    )
+  )
+
+write_tsv(
+  statistics_table,
+  file.path(
+    output_dir,
+    "DTPA_elements_GLM_statistics.tsv"
+  )
+)
+
+print(
+  statistics_table,
+  n = Inf
+)
+
+
+# 6. GLM prediction lines and 95% confidence intervals
+
+
+make_prediction <- function(data) {
+  
+  model_data <- data %>%
+    filter(
+      Group_numeric %in% c(11, 12, 14, 15, 17),
+      !is.na(Group_numeric),
+      is.finite(value)
+    )
+  
+  if (
+    nrow(model_data) < 3 ||
+    n_distinct(model_data$Group_numeric) < 2
+  ) {
+    return(
+      tibble(
+        Group_numeric = numeric(),
+        fitted = numeric(),
+        lower = numeric(),
+        upper = numeric()
+      )
+    )
+  }
+  
+  model <- glm(
+    value ~ Group_numeric,
+    data = model_data,
+    family = gaussian()
+  )
+  
+  prediction_data <- tibble(
+    Group_numeric = seq(
+      11,
+      17,
+      length.out = 100
+    )
+  )
+  
+  prediction <- predict(
+    model,
+    newdata = prediction_data,
+    se.fit = TRUE,
+    type = "response"
+  )
+  
+  prediction_data %>%
+    mutate(
+      fitted = as.numeric(
+        prediction$fit
+      ),
+      lower = fitted -
+        1.96 * as.numeric(prediction$se.fit),
+      upper = fitted +
+        1.96 * as.numeric(prediction$se.fit)
+    )
+}
+
+prediction_data <- df_long %>%
+  group_by(
+    element
+  ) %>%
+  group_modify(
+    ~ make_prediction(.x)
+  ) %>%
+  ungroup()
+
+
+# 7. Plot colors and theme
+
+
+group_colors <- c(
+  "SD" = "#F4A64E",
+  "11" = "#E7E88E",
+  "12" = "#C9D579",
+  "14" = "#A5B86E",
+  "15" = "#7E9A59",
+  "17" = "#526F43"
+)
+
+trend_color <- "#0d47a1"
+
+plot_theme <- theme_classic(
+  base_size = 14
+) +
+  theme(
+    text = element_text(
+      color = "black"
+    ),
+    axis.text = element_text(
+      color = "black"
+    ),
+    axis.title = element_text(
+      color = "black"
+    ),
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    ),
+    strip.background = element_rect(
+      fill = "white",
+      color = "#777777",
+      linewidth = 0.4
+    ),
+    strip.text = element_text(
+      color = "black",
+      size = 11,
+      margin = margin(
+        3, 2, 3, 2
+      )
+    ),
+    legend.position = "none",
+    panel.spacing = unit(
+      0.8,
+      "lines"
+    )
+  )
+
+
+
+# 7. Plot
+
+
+DTPA_figure <- ggplot(
+  df_long,
+  aes(
+    x = plot_x,
+    y = value
+  )
+) +
+  geom_boxplot(
+    aes(
+      group = group,
+      fill = group
+    ),
+    width = 0.65,
+    outlier.shape = NA,
+    color = "#333333",
+    linewidth = 0.45
+  ) +
+  geom_jitter(
+    aes(
+      color = group
+    ),
+    width = 0.12,
+    height = 0,
+    size = 1.15,
+    alpha = 0.65
+  ) +
+  geom_ribbon(
+    data = prediction_data,
+    aes(
+      x = Group_numeric,
+      ymin = lower,
+      ymax = upper
+    ),
+    inherit.aes = FALSE,
+    fill = trend_color,
+    alpha = 0.12
+  ) +
+  geom_line(
+    data = prediction_data,
+    aes(
+      x = Group_numeric,
+      y = fitted
+    ),
+    inherit.aes = FALSE,
+    color = trend_color,
+    linewidth = 0.8
+  ) +
+  facet_wrap(
+    ~ element,
+    scales = "free_y",
+    ncol = 6
+  ) +
+  scale_fill_manual(
+    values = group_colors
+  ) +
+  scale_color_manual(
+    values = group_colors
+  ) +
+  scale_x_continuous(
+    breaks = c(
+      10, 11, 12, 14, 15, 17
+    ),
+    labels = c(
+      "SD", "11", "12", "14", "15", "17"
+    ),
+    limits = c(
+      9.4, 17.4
+    )
+  ) +
+  labs(
+    x = "Restoration year",
+    y = "DTPA-extractable element concentration"
+  ) +
+  plot_theme
+
+print(DTPA_figure)
+
+ggsave(filename = '~/Desktop/replot/culture/field-isolation/strain/DTPA-field.pdf',width = 13, height = 5)  
+```
+
+
+# 9. Field-plot and indoor-tray validation
+
+## 9.1 Meteorological conditions
+
+```{r field-meteorological-conditions}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+
+data <- read.delim(
+  "~/Desktop/replot/global_weathering/worldclim/Alxa_20250510_20250810_daily_climate_POWER.csv",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  header = TRUE,
+  sep = ","
+)
+
+
+# Wide to long
+
+clim_long <- data %>%
+  select(-date) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "var_date",
+    values_to = "value"
+  ) %>%
+  separate(
+    var_date,
+    into = c("variable", "date"),
+    sep = "\\.",
+    extra = "merge"
+  ) %>%
+  mutate(
+    date = ymd(date),
+    day_after_start = as.numeric(date - min(date))
+  )
+
+
+# Rename variables
+
+clim_long <- clim_long %>%
+  mutate(
+    variable = recode(
+      variable,
+      "T2M" = "Mean temperature",
+      "T2M_MAX" = "Maximum temperature",
+      "T2M_MIN" = "Minimum temperature",
+      "PRECTOTCORR" = "Precipitation",
+      "WS2M" = "Wind speed",
+      "RH2M" = "Relative humidity",
+      "ALLSKY_SFC_SW_DWN" = "Solar radiation"
+    )
+  )
+
+
+theme_climate <- theme_bw(base_size = 16) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
+    strip.background = element_rect(fill = "white", color = "black", linewidth = 0.8),
+    strip.text = element_text(size = 15, color = "black"),
+    axis.text = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 15, color = "black"),
+    legend.position = "none"
+  )
+
+
+# Temperature: max + min
+
+p_temp <- clim_long %>%
+  filter(variable %in% c("Maximum temperature", "Minimum temperature")) %>%
+  ggplot(aes(x = date, y = value, color = variable)) +
+  geom_line(linewidth = 0.8) +
+  scale_color_manual(values = c(
+    "Maximum temperature" = "#B44A3C",
+    "Minimum temperature" = "#4C78A8"
+  )) +
+  labs(
+    x = "",
+    y = "Temperature (°C)",
+    title = "Air temperature"
+  ) +
+  theme_climate +
+  theme(
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 13),
+    plot.title = element_text(size = 16, hjust = 0.5)
+  )
+
+
+# Precipitation
+
+p_precip <- clim_long %>%
+  filter(variable == "Precipitation") %>%
+  ggplot(aes(x = date, y = value)) +
+  geom_col(width = 1) +
+  labs(
+    x = "",
+    y = "Precipitation (mm/day)",
+    title = "Precipitation"
+  ) +
+  theme_climate +
+  theme(plot.title = element_text(size = 16, hjust = 0.5))
+
+
+# Relative humidity
+
+p_rh <- clim_long %>%
+  filter(variable == "Relative humidity") %>%
+  ggplot(aes(x = date, y = value)) +
+  geom_line(linewidth = 0.8) +
+  labs(
+    x = "",
+    y = "Relative humidity (%)",
+    title = "Relative humidity"
+  ) +
+  theme_climate +
+  theme(plot.title = element_text(size = 16, hjust = 0.5))
+
+
+# Solar radiation
+
+p_rad <- clim_long %>%
+  filter(variable == "Solar radiation") %>%
+  ggplot(aes(x = date, y = value)) +
+  geom_line(linewidth = 0.8) +
+  labs(
+    x = "",
+    y = expression("Solar radiation (MJ m"^-2*" day"^-1*")"),
+    title = "Solar radiation"
+  ) +
+  theme_climate +
+  theme(plot.title = element_text(size = 16, hjust = 0.5))
+
+p_climate <- (p_temp + p_precip + p_rh + p_rad) 
+
+
+p_climate
+```
+
+## 9.2 Field and indoor hydraulic conductivity
+
+```{r validation-ks}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+data <- read.delim('~/Desktop/replot/culture/field-experiment/PND/t-s-plot.txt',
+                   stringsAsFactors = FALSE, check.names = FALSE,
+                   header = TRUE, sep = "\t")
+
+metrics <- c("KS", "rnds")
+# field plots labeled as S, indoor labeled as T
+
+df_long <- data %>%
+  filter(type == "T") %>%
+  mutate(
+    week_num = as.numeric(week),
+    strain = recode(
+      strain,
+      "KO" = "ΔBibC",
+      "OS" = "OE-BibC"
+    ),
+    strain = factor(
+      strain,
+      levels = c("NC", "WT", "ΔBibC", "OE-BibC")
+    )
+  ) %>%
+  pivot_longer(
+    all_of(metrics),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  mutate(value = as.numeric(value))
+
+
+df_sum <- df_long %>%
+  group_by(metric, week_num, strain) %>%
+  summarise(
+    mean = mean(value, na.rm = TRUE),
+    sd   = sd(value, na.rm = TRUE),
+    n    = sum(!is.na(value)),
+    se   = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+weeks <- sort(unique(df_sum$week_num))
+pad <- 0
+
+box_colors <- c(
+  "NC" = "#5A5A5A",
+  "WT" = "#7FA44A",
+  "ΔBibC" = "#D6A21E",
+  "OE-BibC" = "#5AA6C8"
+)
+
+line_colors <- c(
+  "NC" = "#2F2F2F",
+  "WT" = "#5F8C35",
+  "ΔBibC" = "#A97800",
+  "OE-BibC" = "#2E7FA3"
+)
+
+p_KS <- df_sum %>%
+  filter(metric == "KS") %>%
+  ggplot(aes(x = week_num, y = mean, color = strain, fill = strain, group = strain)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 3, shape = 21, stroke = 0.8, color = "black") +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 1.5,
+    linewidth = 0.7
+  ) +
+  scale_fill_manual(values = box_colors) +
+  scale_color_manual(values = line_colors) +
+  scale_x_continuous(breaks = weeks, labels = weeks) +
+  coord_cartesian(xlim = c(min(weeks) - pad, max(weeks) + pad), clip = "off") +
+  labs(x = "", y = "Estimated Ks (m/day)", color = "Strain", fill = "Strain") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "bottom",
+    axis.text.x = element_text(size = 18, color = "black"),
+    axis.text.y = element_text(size = 18, color = "black"),
+    axis.title.x = element_text(size = 18, colour = "black"),
+    axis.title.y = element_text(size = 18, colour = "black"),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 14)
+  )
+
+p_KS
+
+ggsave(filename = "~/Desktop/replot/culture/field-experiment/PND/ks-indoor.pdf", width = 5,height =  3.5)
+
+library(dplyr)
+library(emmeans)
+library(lme4)
+library(lmerTest)
+
+# 读入数据
+data <- read.delim(
+  "~/Desktop/replot/culture/field-experiment/PND/t-s-plot.txt",
+  stringsAsFactors = FALSE, check.names = FALSE,
+  header = TRUE, sep = "\t"
+)
+
+# 只保留 type == "S"
+dat_s <- data %>%
+  filter(type == "T") %>%
+  mutate(
+    strain   = factor(strain, levels = c("NC", "KO", "WT", "OS")),
+    week     = factor(week, levels = sort(unique(week))),
+    week_num = as.numeric(as.character(week)),
+    order    = factor(order),
+    rep_id   = interaction(strain, order, drop = TRUE)
+  )
+
+
+# KS：mixed model
+
+fit_KS <- lmer(KS ~ strain * week + (1 | rep_id), data = dat_s)
+
+anova(fit_KS)
+summary(fit_KS)
+
+# 每天不同组之间两两比较
+emm_KS <- emmeans(fit_KS, ~ strain | week)
+pairs_KS <- pairs(emm_KS, adjust = "none") %>%
+  as.data.frame()
+
+pairs_KS
+```
+
+## 9.3 Particle-size redistribution
+
+```{r validation-particle-size}
+# indoor
+  library(tidyverse)
+ df <- read.delim('~/Desktop/replot/culture/field-experiment/PND/p3-os-wt.txt',
+                   stringsAsFactors = FALSE, check.names = FALSE,
+                   header = T, sep = "\t")
+# field
+  df <- read.delim('~/Desktop/replot/culture/field-experiment/PND/outdoor-os-wt-p3.txt',
+                   stringsAsFactors = FALSE, check.names = FALSE,
+                   header = T, sep = "\t")
+  
+
+ 
+  
+  #  可选：是否用“数目权重” 
+  use_number_weighted <- FALSE  # 想用数目权重就设 TRUE
+  
+  plot_delta_p <- function(df, group_sel, use_number_weighted = FALSE) {
+    diam_cols <- setdiff(names(df), c("sample","week","group"))
+    
+    # 长表
+    long <- df %>%
+      filter(group == group_sel, week %in% c(0, 12)) %>%
+      pivot_longer(all_of(diam_cols), names_to = "diameter", values_to = "p3") %>%
+      mutate(diameter = as.numeric(diameter)) %>%
+      arrange(sample, week, diameter)
+    
+    # 计算“每周×直径” 的平均频率 (%)
+    if (!use_number_weighted) {
+      # 用原始 p3 直接归一化成频率(%)
+      df_freq <- long %>%
+        group_by(week, diameter) %>%
+        summarise(mean_value = mean(p3), .groups = "drop") %>%
+        group_by(week) %>%
+        mutate(freq_percent = 100 * mean_value / sum(mean_value)) %>%
+        ungroup()
+    } else {
+      # 把 p3 近似视作面积或体积频率；换算成“数目权重”：pN ∝ p3 / d^2
+      d <- sort(unique(long$diameter))
+      d2 <- d^2
+      df_freq <- long %>%
+        group_by(sample, week) %>%
+        group_modify(~{
+          p_area <- .x$p3
+          p_num  <- (p_area / (d2 + 1e-12))
+          p_num  <- 100 * p_num / sum(p_num)
+          tibble(diameter = d, freq_percent = p_num)
+        }) %>%
+        ungroup() %>%
+        group_by(week, diameter) %>%
+        summarise(freq_percent = mean(freq_percent), .groups = "drop")
+    }
+    
+    # 宽表并计算 Δp(d) = 12w - 0w
+    dp <- df_freq %>%
+      select(week, diameter, freq_percent) %>%
+      mutate(week = as.character(week)) %>%
+      pivot_wider(names_from = week, values_from = freq_percent, names_prefix = "w") %>%
+      arrange(diameter) %>%
+      mutate(delta_p = w12 - w0)
+    
+    # 画“差值曲线”
+    ggplot(dp, aes(diameter, delta_p)) +
+      geom_hline(yintercept = 0, linewidth = 0.3) +
+      geom_line(linewidth = 1.2, color = "#D1495B") +
+      # 如需对数轴就打开下一行
+      # scale_x_log10()
+      labs(x = "Particle diameter (nm)",
+           y = expression(Delta*p~"(12 w - 0 w, %)"),
+           title = paste0("Δp(d) — ", toupper(group_sel),
+                          ifelse(use_number_weighted, " (Number-weighted)", ""))) +
+      theme_bw(base_size = 16)
+  }
+  
+  # 直接画 OE 与 WT 两条差值曲线 
+  p_oe <- plot_delta_p(df, "oe", use_number_weighted)
+  p_wt <- plot_delta_p(df, "wt", use_number_weighted)
+  
+  print(p_oe)
+  print(p_wt)
+  
+  # 如要保存：
+  # ggsave("delta_p_oe.png", p_oe, width = 7, height = 4, dpi = 300)
+  # ggsave("delta_p_wt.png", p_wt, width = 7, height = 4, dpi = 300)
+  
+ 
+  library(tidyverse)
+  
+  # 公用：列名 / 直径网格 
+  diam_cols <- setdiff(names(df), c("sample","week","group"))
+  dgrid <- as.numeric(diam_cols)
+  
+  # 每样本频率（%）
+  sample_freq <- function(df, group_sel, wk){
+    df %>% filter(group==group_sel, week==wk) %>%
+      select(all_of(diam_cols)) %>% as.matrix() %>%
+      { 100 * . / rowSums(.) }
+  }
+  
+  # 计算：原始折线 + bootstrap CI + p 值 + FDR
+  boot_delta_ci_p <- function(df, group_sel, B = 4000, alpha = 0.05){
+    X0  <- sample_freq(df, group_sel, 0);   n0  <- nrow(X0)
+    X12 <- sample_freq(df, group_sel, 12);  n12 <- nrow(X12)
+    
+    # 原始折线（不平滑）
+    raw <- tibble(diam = dgrid, delta_raw = colMeans(X12) - colMeans(X0))
+    
+    # bootstrap
+    set.seed(1)
+    deltas <- array(NA_real_, dim = c(B, ncol(X0)))
+    for(b in seq_len(B)){
+      m0  <- colMeans(X0 [sample(n0,  n0,  replace = TRUE), , drop = FALSE])
+      m12 <- colMeans(X12[sample(n12, n12, replace = TRUE), , drop = FALSE])
+      deltas[b, ] <- m12 - m0
+    }
+    
+    mu <- colMeans(deltas)
+    lo <- apply(deltas, 2, quantile, probs = alpha/2)
+    hi <- apply(deltas, 2, quantile, probs = 1 - alpha/2)
+    
+    # 双侧 p 值：p = 2 * min(Pr[Δ>=0], Pr[Δ<=0])
+    p_two <- apply(deltas, 2, function(v) 2 * min(mean(v >= 0), mean(v <= 0)))
+    padj  <- p.adjust(p_two, method = "BH")
+    
+    ci <- tibble(
+      diam = dgrid, mu = mu, lo = lo, hi = hi,
+      p = p_two, padj = padj,
+      sig_fdr = padj < 0.05              # 只标 FDR<0.05 的点
+    )
+    list(raw = raw, ci = ci)
+  }
+  
+  # 画图：无黄色带，限制 x 到 1600；可选对数轴；自定义颜色
+  plot_delta_ci <- function(df, group_sel, line_col = "#D1495B",
+                            xmax = 1600, log_x = FALSE, title = ""){
+    comp <- boot_delta_ci_p(df, group_sel, B = 4000)
+    raw  <- comp$raw
+    ci   <- comp$ci
+    
+    p <- ggplot() +
+      geom_ribbon(data = ci, aes(x = diam, ymin = lo, ymax = hi),
+                  fill = "#B0B0B0", alpha = .20) +
+      geom_line(data = raw, aes(diam, delta_raw),
+                color = line_col, linewidth = 1.05) +
+      geom_point(data = subset(ci, sig_fdr), aes(diam, mu),
+                 color = "black", size = 1.6) +
+      geom_hline(yintercept = 0, linewidth = .3) +
+      labs(x = "Particle diameter (µm)",
+           y = expression(Delta*p~"(d84 − d0, %)"),
+           title = title) +
+      coord_cartesian(xlim = c(min(dgrid), xmax)) +
+      theme_bw() +
+      theme(
+        legend.position = "none",
+        axis.text  = element_text(size = 14, color = "black"),
+        axis.title = element_text(size = 16, color = "black"),
+        strip.text = element_text(size = 16, color = "black")
+      )
+    
+    if (log_x) p <- p + scale_x_log10(limits = c(min(dgrid), xmax))
+    p
+  }
+  
+  # 出图（不同颜色）
+  p_oe <- plot_delta_ci(df, "oe", line_col = "#4F8FB3",
+                        xmax = 1600, log_x = FALSE,
+                        title = "OE — Δp(d) with bootstrap 95% CI (FDR points)")
+  p_wt <- plot_delta_ci(df, "wt", line_col = "#7FA35A",
+                        xmax = 1600, log_x = FALSE,
+                        title = "WT — Δp(d) with bootstrap 95% CI (FDR points)")
+  
+  print(p_oe)
+  print(p_wt)
+  
+  library(patchwork)
+  p_oe + p_wt + plot_layout(ncol = 2, widths = c(1, 1))
+  
+  ggsave(filename = "~/Desktop/replot/culture/field-experiment/PND/outdoor-wt-0-12-T.pdf", width = 5, height = 3)
+  
+  
+  box_colors   <- c(
+    "NC" = "#6E6E6E",   # 深灰
+    "KO" = "#C9A227",   # 暗金
+    "WT" = "#7FA35A",   # 橄榄绿
+    "OS" = "#6FA8C9"    # 灰蓝
+  )
+  
+  line_colors <- c(
+    "NC" = "#4A4A4A",
+    "KO" = "#B58900",
+    "WT" = "#6B8E23",
+    "OS" = "#4F8FB3"
+  )
+  
+  
+  library(tidyverse)
+  
+  # —— 保持已有的函数：sample_freq、boot_delta_ci_p（含 FDR 计算） ——
+  # 若已在环境中，无需重复定义
+  
+  # 1) 计算 OE / WT 的原始折线 + CI + FDR，并打上 group 标记
+  comp_oe <- boot_delta_ci_p(df, "oe", B = 4000)
+  comp_wt <- boot_delta_ci_p(df, "wt", B = 4000)
+  
+  raw_df <- bind_rows(
+    comp_oe$raw %>% mutate(group = "OE"),
+    comp_wt$raw %>% mutate(group = "WT")
+  )
+  
+  ci_df <- bind_rows(
+    comp_oe$ci %>% mutate(group = "OE"),
+    comp_wt$ci %>% mutate(group = "WT")
+  )
+  
+  # 2) 颜色（可改）
+  line_cols <- c("OE" = "#4F8FB3", "WT" = "#7FA35A")
+  
+  ci_df$group <- factor(ci_df$group, levels = c('WT','OE'))
+  
+  
+  
+  order_lvls <- c("WT", "OE")    # 想要的上下顺序：WT 在上，OE 在下
+  
+  # 生成/更新两个数据框
+  raw_df <- bind_rows(
+    comp_oe$raw %>% mutate(group = "OE"),
+    comp_wt$raw %>% mutate(group = "WT")
+  ) %>% mutate(group = factor(group, levels = order_lvls))
+  
+  ci_df <- bind_rows(
+    comp_oe$ci %>% mutate(group = "OE"),
+    comp_wt$ci %>% mutate(group = "WT")
+  ) %>% mutate(group = factor(group, levels = order_lvls))
+  
+  # 画图（注意 facet_wrap 使用同一个因子）
+  p_combined <- ggplot() +
+    geom_ribbon(data = ci_df,
+                aes(x = diam, ymin = lo, ymax = hi),
+                fill = "#B0B0B0", alpha = .20) +
+    geom_line(data = raw_df,
+              aes(diam, delta_raw, color = group),
+              linewidth = 1.05) +
+    geom_point(data = ci_df %>% filter(padj < 0.05),
+               aes(diam, mu),
+               color = "black", size = 1.6) +
+    geom_hline(yintercept = 0, linewidth = .3) +
+    facet_wrap(~ group, ncol = 2, scales = "free_y", drop = FALSE) +
+    scale_color_manual(values = c("WT"="#7FA35A", "OE"="#4F8FB3")) +
+    scale_x_continuous(expand = expansion(add = c(20, 0))) +
+    coord_cartesian(xlim = c(min(dgrid), 1300)) +
+    labs(x = "Particle diameter (µm)",
+         y = expression(Delta*p~"(d84 − d0, %)")) +
+    theme_bw() +
+    theme(
+      legend.position = "none",
+      strip.background = element_rect(fill = "white"),
+      axis.text  = element_text(size = 18, color = "black"),
+      axis.title = element_text(size = 18, color = "black"),
+      strip.text = element_text(size = 18)
+    )
+  
+  print(p_combined)
+
+  
+  ggsave(filename = "~/Desktop/replot/culture/field-experiment/PND/indoor-wt-os-0-12.pdf", width = 9, height = 3)
+  
+  # 如需导出每个直径点的 p 值/FDR 数据用于补充表：
+  # comp_oe <- boot_delta_ci_p(df, "oe"); write.csv(comp_oe$ci, "OE_delta_p_FDR.csv", row.names = FALSE)
+  # comp_wt <- boot_delta_ci_p(df, "wt"); write.csv(comp_wt$ci, "WT_delta_p_FDR.csv", row.names = FALSE)
+  
+  
+  
+ #统计
+  # 安装/载入
+  # install.packages("mgcv")   # 通常自带，如缺再装
+  library(tidyverse)
+  library(mgcv)
+  
+  # 1) 组织成“样本×粒径”的频率长表 
+  diam_cols <- setdiff(names(df), c("sample","week","group"))
+  dgrid <- as.numeric(diam_cols)
+  
+  make_long_freq <- function(df, group_sel){
+    df %>%
+      filter(group == group_sel, week %in% c(0,12)) %>%
+      pivot_longer(all_of(diam_cols), names_to="diam", values_to="val") %>%
+      mutate(diam = as.numeric(diam)) %>%
+      group_by(sample, week) %>%
+      mutate(freq = 100 * val / sum(val)) %>%
+      ungroup() %>%
+      mutate(logd = log10(diam),
+             weekf = factor(week, levels=c(0,12)))
+  }
+  
+  dat_oe <- make_long_freq(df, "oe")
+  dat_wt <- make_long_freq(df, "wt")
+  
+  # 2) 拟合 GAM 并做“形状是否不同”的整体检验 
+  fit_compare <- function(dat, k = 20){
+    # 共同曲线（周之间仅截距差异）
+    m_common <- gam(freq ~ weekf + s(logd, k=k, bs="cr"),
+                    data = dat, method = "REML")
+    # 分别曲线（0w/12w 各一条光滑）= factor-smooth interaction
+    m_sep    <- gam(freq ~ weekf + s(logd, by = weekf, k=k, bs="cr"),
+                    data = dat, method = "REML")
+    # 比较：分开曲线是否显著优于共同曲线（形状不同）
+    cmp <- anova(m_common, m_sep, test = "Chisq")
+    list(m_common=m_common, m_sep=m_sep, cmp=cmp)
+  }
+  
+  res_oe <- fit_compare(dat_oe, k=25)
+  res_wt <- fit_compare(dat_wt, k=25)
+  
+  res_oe$cmp   # 查看 OE 的模型比较（看 Pr(>Chi)）
+  res_wt$cmp   # 查看 WT 的模型比较
+  
+  
+```
+
+## 9.4 Inoculant persistence and viability
+
+```{r validation-persistence-viability}
+
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+
+df <- read.delim('~/Desktop/replot/culture/PMA/indoor/copies-indoor.txt',
+                 stringsAsFactors = FALSE, check.names = FALSE,
+                 header = TRUE, sep = "\t")
+df <- read.delim('~/Desktop/replot/culture/PMA/field/copies-field.txt',
+                 stringsAsFactors = FALSE, check.names = FALSE,
+                 header = TRUE, sep = "\t")
+
+
+# Rename groups
+
+df <- df %>%
+  mutate(
+    group = recode(
+      group,
+      "KO" = "ΔBibC",
+      "OE" = "OE-BibC",
+      "OS" = "OE-BibC"
+    ),
+    group = factor(
+      group,
+      levels = c("NC", "WT", "ΔBibC", "OE-BibC")
+    ),
+    day = as.numeric(day)
+  )
+
+
+# Colors
+
+box_colors <- c(
+  "NC"      = "#6E6E6E",
+  "WT"      = "#7FA35A",
+  "ΔBibC"   = "#C9A227",
+  "OE-BibC" = "#6FA8C9"
+)
+
+line_colors <- c(
+  "NC"      = "#4A4A4A",
+  "WT"      = "#6B8E23",
+  "ΔBibC"   = "#B58900",
+  "OE-BibC" = "#4F8FB3"
+)
+
+
+# Days
+
+all_days  <- sort(unique(df$day))
+bibc_days <- sort(unique(df$day[df$day != 0]))
+
+
+# Theme
+
+theme_my <- theme_bw(base_size = 15) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
+    plot.title = element_text(size = 15, color = "black", hjust = 0.5),
+    axis.text = element_text(color = "black", size = 13),
+    axis.title = element_text(color = "black", size = 13),
+    legend.position = "none",
+    plot.margin = margin(5, 5, 5, 5)
+  )
+
+
+# Boxplot function
+
+make_boxplot <- function(dat, title, ylab,
+                         y_add_lower = 0.08,
+                         y_add_upper = 0.18) {
+  
+  dat <- dat %>%
+    mutate(day = factor(day, levels = sort(unique(day))))
+  
+  ggplot(dat, aes(x = day, y = value, fill = group)) +
+    geom_boxplot(
+      aes(color = group),
+      position = position_dodge(width = 0.78),
+      width = 0.60,
+      outlier.shape = NA,
+      linewidth = 0.7,
+      alpha = 0.9
+    ) +
+    geom_point(
+      aes(group = interaction(day, group)),
+      position = position_jitterdodge(
+        jitter.width = 0.08,
+        dodge.width = 0.78
+      ),
+      shape = 21,
+      size = 1.2,
+      stroke = 0.3,
+      fill = "#5D6568",
+      color = "#363F43",
+      alpha = 0.9
+    ) +
+    scale_fill_manual(values = box_colors, drop = FALSE) +
+    scale_color_manual(values = line_colors, drop = FALSE) +
+    scale_y_continuous(
+      expand = expansion(mult = c(0, 0), add = c(y_add_lower, y_add_upper))
+    ) +
+    labs(
+      title = title,
+      x = "",
+      y = ylab
+    ) +
+    theme_my
+}
+
+
+# Row 1: bacterial
+
+
+# 1. Total bacterial
+p1_df <- df %>%
+  mutate(value = log10(`16s-no-pma` + 1)) %>%
+  filter(day %in% all_days, is.finite(value), !is.na(value)) %>%
+  select(day, group, sample_id, value)
+
+p1 <- make_boxplot(
+  p1_df,
+  title = "Total bacterial",
+  ylab = expression(log[10]*"(copies/mg sand + 1)"),
+  y_add_lower = 0.2,
+  y_add_upper = 0.20
+)
+
+# 2. Viable bacterial
+p2_df <- df %>%
+  mutate(value = log10(`16s-pma` + 1)) %>%
+  filter(day %in% all_days, is.finite(value), !is.na(value)) %>%
+  select(day, group, sample_id, value)
+
+p2 <- make_boxplot(
+  p2_df,
+  title = "Viable bacterial",
+  ylab = expression(log[10]*"(copies/mg sand + 1)"),
+  y_add_lower = 0.2,
+  y_add_upper = 0.20
+)
+
+# 3. Bacterial live ratio
+p3_df <- df %>%
+  mutate(value = `16s-pma` / `16s-no-pma`) %>%
+  filter(day %in% c(42, 84), is.finite(value), !is.na(value)) %>%
+  select(day, group, sample_id, value)
+
+p3 <- make_boxplot(
+  p3_df,
+  title = "Bacterial live ratio",
+  ylab = "Ratio",
+  y_add_lower = 0.02,
+  y_add_upper = 0.06
+)
+
+
+# Row 2: inoculant
+
+
+# 4. Total inoculant
+p4_df <- df %>%
+  mutate(value = log10(`N9-S-no-pma` + 1)) %>%
+  filter(day %in% c(42, 84), is.finite(value), !is.na(value)) %>%
+  select(day, group, sample_id, value)
+
+p4 <- make_boxplot(
+  p4_df,
+  title = "Total inoculant",
+  ylab = expression(log[10]*"(copies/mg sand + 1)"),
+  y_add_lower = 0.2,
+  y_add_upper = 0.20
+)
+
+# 5. Viable inoculant
+p5_df <- df %>%
+  mutate(value = log10(`N9-S-pma` + 1)) %>%
+  filter(day %in% c(42, 84), is.finite(value), !is.na(value)) %>%
+  select(day, group, sample_id, value)
+
+p5 <- make_boxplot(
+  p5_df,
+  title = "Viable inoculant",
+  ylab = expression(log[10]*"(copies/mg sand + 1)"),
+  y_add_lower = 0.2,
+  y_add_upper = 0.20
+)
+
+# 6. Inoculant live ratio
+# 6. Inoculant live ratio
+# only 42 and 84, exclude day 0
+p6_df <- df %>%
+  mutate(value = `N9-S-pma` / `N9-S-no-pma`) %>%
+  filter(day %in% c(42, 84), is.finite(value), !is.na(value)) %>%
+  select(day, group, sample_id, value)
+
+p6 <- make_boxplot(
+  p6_df,
+  title = "Inoculant live ratio",
+  ylab = "Ratio",
+  y_add_lower = 0.2,
+  y_add_upper = 0.2
+)
+
+# Row 3: BibC
+# 4 groups all included
+
+
+# 7. Total BibC
+p7_df <- df %>%
+  mutate(value = log10(`BibC-like-no-pma` + 1)) %>%
+  filter(day %in% bibc_days, is.finite(value), !is.na(value)) %>%
+  select(day, group, sample_id, value)
+
+p7 <- make_boxplot(
+  p7_df,
+  title = "Total BibC",
+  ylab = expression(log[10]*"(copies/mg sand + 1)"),
+  y_add_lower = 0.08,
+  y_add_upper = 0.18
+)
+
+# 7. Viable BibC
+p8_df <- df %>%
+  mutate(value = log10(`BibC-like-pma` + 1)) %>%
+  filter(day %in% bibc_days, is.finite(value), !is.na(value)) %>%
+  select(day, group, sample_id, value)
+
+p8 <- make_boxplot(
+  p8_df,
+  title = "Viable BibC",
+  ylab = expression(log[10]*"(copies/mg sand + 1)"),
+  y_add_lower = 0.08,
+  y_add_upper = 0.18
+)
+
+# 9. BibC live ratio
+p9_df <- df %>%
+  mutate(value = `BibC-like-pma` / `BibC-like-no-pma`) %>%
+  filter(day %in% bibc_days, is.finite(value), !is.na(value)) %>%
+  select(day, group, sample_id, value)
+
+p9 <- make_boxplot(
+  p9_df,
+  title = "BibC live ratio",
+  ylab = "Ratio",
+  y_add_lower = 0.02,
+  y_add_upper = 0.06
+)
+
+# Combine
+
+p_combined <- (p1 | p2 | p3) /
+  (p4 | p5 | p6) /
+  (p7 | p8 | p9)
+
+p_combined <- (p1 | p2 | p3) /
+  (p5 | p7 | p9) /
+  (p4 | p6 | p8)
+
+p_combined
+
+p_field <- 
+  (p1 | p2 | p3) /
+  (p4 | p5 | p6) /
+  (p7 | p9 | plot_spacer()) +
+  plot_layout(
+    widths  = c(1, 1, 1),
+    heights = c(1, 1, 1)
+  )
+
+p_field
+
+ggsave(filename = "~/Desktop/replot/culture/PMA/field/PMA-si.pdf", width = 7, height = 7)
+
+ggsave(filename = "~/Desktop/replot/culture/PMA/indoor/PMA-si.pdf", width = 7, height = 7)
+
+
+## PMA统计分析 
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(readr)
+library(lme4)
+library(lmerTest)
+library(emmeans)
+library(tibble)
+
+
+# Read data
+
+df <- read.delim(
+  "~/Desktop/replot/culture/PMA/indoor/copies-indoor.txt",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  header = TRUE,
+  sep = "\t"
+)
+
+df <- read.delim(
+  "~/Desktop/replot/culture/PMA/field/copies-field.txt",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  header = TRUE,
+  sep = "\t"
+)
+
+
+
+# Prepare data
+
+df <- df %>%
+  mutate(
+    group = recode(group, "OE" = "OS"),
+    group = factor(group, levels = c("NC", "KO", "WT", "OS")),
+    day_num = as.numeric(as.character(day)),
+    day = factor(day_num, levels = c(0, 42, 84)),
+    rep_id = interaction(group, sample_id, drop = TRUE)
+  )
+
+
+# Build variables for 9 panels
+
+df2 <- df %>%
+  mutate(
+    # Row 1: bacterial
+    total_bacterial = log10(`16s-no-pma` + 1),
+    viable_bacterial = log10(`16s-pma` + 1),
+    bacterial_live_logratio =
+      log10(`16s-pma` + 1) - log10(`16s-no-pma` + 1),
+    
+    # Row 2: inoculant
+    total_inoculant = log10(`N9-S-no-pma` + 1),
+    viable_inoculant = log10(`N9-S-pma` + 1),
+    inoculant_live_logratio =
+      log10(`N9-S-pma` + 1) - log10(`N9-S-no-pma` + 1),
+    
+    # Row 3: BibC-like
+    total_bibc = log10(`BibC-like-no-pma` + 1),
+    viable_bibc = log10(`BibC-like-pma` + 1),
+    bibc_live_logratio =
+      log10(`BibC-like-pma` + 1) - log10(`BibC-like-no-pma` + 1)
+  )
+
+
+# Analysis settings matching visualization
+
+analysis_list <- list(
+  
+  # Row 1
+  # p1: 0, 42, 84; 4 groups
+  total_bacterial = list(
+    var = "total_bacterial",
+    days = c("0", "42", "84"),
+    groups = c("NC", "KO", "WT", "OS")
+  ),
+  
+  # p2: 0, 42, 84; 4 groups
+  viable_bacterial = list(
+    var = "viable_bacterial",
+    days = c("0", "42", "84"),
+    groups = c("NC", "KO", "WT", "OS")
+  ),
+  
+  # p3: only 42, 84; 4 groups
+  bacterial_live_logratio = list(
+    var = "bacterial_live_logratio",
+    days = c("42", "84"),
+    groups = c("NC", "KO", "WT", "OS")
+  ),
+  
+  # Row 2
+  # p4: only 42, 84; 4 groups
+  total_inoculant = list(
+    var = "total_inoculant",
+    days = c("42", "84"),
+    groups = c("NC", "KO", "WT", "OS")
+  ),
+  
+  # p5: only 42, 84; 4 groups
+  viable_inoculant = list(
+    var = "viable_inoculant",
+    days = c("42", "84"),
+    groups = c("NC", "KO", "WT", "OS")
+  ),
+  
+  # p6: only 42, 84; 4 groups
+  inoculant_live_logratio = list(
+    var = "inoculant_live_logratio",
+    days = c("42", "84"),
+    groups = c("NC", "KO", "WT", "OS")
+  ),
+  
+  # Row 3
+  # p7: only 42, 84; 4 groups
+  total_bibc = list(
+    var = "total_bibc",
+    days = c("42", "84"),
+    groups = c("NC", "KO", "WT", "OS")
+  ),
+  
+  # p8: only 42, 84; 4 groups
+  viable_bibc = list(
+    var = "viable_bibc",
+    days = c("42", "84"),
+    groups = c("NC", "KO", "WT", "OS")
+  ),
+  
+  # p9: only 42, 84; 4 groups
+  bibc_live_logratio = list(
+    var = "bibc_live_logratio",
+    days = c("42", "84"),
+    groups = c("NC", "KO", "WT", "OS")
+  )
+)
+
+
+# LMM function
+
+run_lmm <- function(dat, response_var, keep_days, keep_groups) {
+  
+  subdat <- dat %>%
+    filter(day %in% keep_days, group %in% keep_groups) %>%
+    select(group, day, rep_id, all_of(response_var)) %>%
+    rename(y = all_of(response_var)) %>%
+    filter(is.finite(y), !is.na(y)) %>%
+    droplevels() %>%
+    mutate(
+      group = factor(group, levels = keep_groups),
+      day = factor(day, levels = keep_days),
+      rep_id = factor(rep_id)
+    )
+  
+  fit <- lmer(
+    y ~ group * day + (1 | rep_id),
+    data = subdat,
+    REML = FALSE
+  )
+  
+  anova_tab <- anova(fit, type = 3) %>%
+    as.data.frame() %>%
+    rownames_to_column("term")
+  
+  emm_all <- emmeans(fit, ~ group * day) %>%
+    as.data.frame()
+  
+  group_by_day <- emmeans(fit, ~ group | day) %>%
+    pairs(adjust = "BH") %>%
+    as.data.frame()
+  
+  day_by_group <- emmeans(fit, ~ day | group) %>%
+    pairs(adjust = "BH") %>%
+    as.data.frame()
+  
+  list(
+    data = subdat,
+    fit = fit,
+    anova = anova_tab,
+    emm = emm_all,
+    group_by_day = group_by_day,
+    day_by_group = day_by_group
+  )
+}
+
+
+# Run all analyses
+
+results <- imap(
+  analysis_list,
+  ~ run_lmm(
+    dat = df2,
+    response_var = .x$var,
+    keep_days = .x$days,
+    keep_groups = .x$groups
+  )
+)
+
+
+# Combine outputs
+
+anova_all <- imap_dfr(
+  results,
+  ~ mutate(.x$anova, panel = .y),
+  .id = NULL
+)
+
+emm_all <- imap_dfr(
+  results,
+  ~ mutate(.x$emm, panel = .y),
+  .id = NULL
+)
+
+group_by_day_all <- imap_dfr(
+  results,
+  ~ mutate(.x$group_by_day, panel = .y),
+  .id = NULL
+)
+
+day_by_group_all <- imap_dfr(
+  results,
+  ~ mutate(.x$day_by_group, panel = .y),
+  .id = NULL
+)
+
+# Significant results
+
+anova_sig <- anova_all %>%
+  filter(`Pr(>F)` < 0.05)
+
+group_by_day_sig <- group_by_day_all %>%
+  filter(p.value < 0.05)
+
+day_by_group_sig <- day_by_group_all %>%
+  filter(p.value < 0.05)
+
+
+# View outputs
+
+anova_sig
+group_by_day_sig
+day_by_group_sig
+```
+
+## 9.5 DFOE production
+
+```{r validation-dfoe}
+library(dplyr)
+library(ggplot2)
+
+data <- read.delim('~/Desktop/replot/culture/field-experiment/target-dfoe/field_dfoe.txt',
+                   stringsAsFactors = FALSE, check.names = FALSE,
+                   header = TRUE, sep = "\t")
+
+plot_df <- data %>%
+  filter(type == "T", day %in% c(0, 42, 84)) %>%
+  mutate(
+    day = factor(day, levels = c(0, 42, 84)),
+    group = recode(
+      group,
+      "KO" = "ΔBibC-like",
+      "OS" = "OE-BibC-like"
+    ),
+    group = factor(group, levels = c("NC", "WT", "ΔBibC-like", "OE-BibC-like"))
+  )
+
+box_colors <- c(
+  "NC"           = "#6E6E6E",
+  "WT"           = "#7FA35A",
+  "ΔBibC-like"   = "#C9A227",
+  "OE-BibC-like" = "#6FA8C9"
+)
+
+line_colors <- c(
+  "NC"           = "#4A4A4A",
+  "WT"           = "#6B8E23",
+  "ΔBibC-like"   = "#B58900",
+  "OE-BibC-like" = "#4F8FB3"
+)
+
+p <- ggplot(plot_df, aes(x = day, y = Con, fill = group)) +
+  geom_boxplot(
+    aes(color = group),
+    width = 0.62,
+    position = position_dodge(width = 0.78),
+    outlier.shape = NA,
+    linewidth = 0.7,
+    alpha = 0.9
+  ) +
+  geom_point(
+    aes(group = interaction(day, group)),
+    position = position_jitterdodge(
+      jitter.width = 0.08,
+      dodge.width = 0.78
+    ),
+    shape = 21,
+    size = 2.5,
+    stroke = 0.3,
+    fill = "#5D6568",
+    color = "#363F43",
+    alpha = 0.9,
+    show.legend = FALSE
+  ) +
+  scale_fill_manual(values = box_colors, drop = FALSE) +
+  scale_color_manual(values = line_colors, drop = FALSE) +
+  scale_x_discrete(
+    expand = expansion(add = c(0.45, 0.45))
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0), add = c(0.00005, 0.00015))
+  ) +
+  labs(
+    title = "DFOE concentration",
+    x = "",
+    y = "pmol/mg dry soil",
+    fill = NULL,
+    color = NULL
+  ) +
+  theme_bw(base_size = 16) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "none",
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
+    plot.title = element_text(size = 20, color = "black", hjust = 0.5),
+    axis.text = element_text(size = 20, color = "black"),
+    axis.title = element_text(size = 20, color = "black"),
+    legend.text = element_text(size = 20, color = "black")
+  )
+
+p
+
+# indoor
+p <- ggplot(plot_df, aes(x = day, y = Con, fill = group)) +
+  geom_boxplot(
+    aes(color = group),
+    width = 0.62,
+    position = position_dodge(width = 0.78),
+    outlier.shape = NA,
+    linewidth = 0.7,
+    alpha = 0.9
+  ) +
+  geom_point(
+    aes(group = interaction(day, group)),
+    position = position_jitterdodge(
+      jitter.width = 0.08,
+      dodge.width = 0.78
+    ),
+    shape = 21,
+    size = 2.5,
+    stroke = 0.3,
+    fill = "#5D6568",
+    color = "#363F43",
+    alpha = 0.9,
+    show.legend = FALSE
+  ) +
+  scale_fill_manual(values = box_colors, drop = FALSE) +
+  scale_color_manual(values = line_colors, drop = FALSE) +
+  scale_x_discrete(
+    expand = expansion(add = c(0.45, 0.45))
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0), add = c(0.005, 0.005))
+  ) +
+  labs(
+    title = "DFOE concentration",
+    x = "",
+    y = "pmol/mg dry soil",
+    fill = NULL,
+    color = NULL
+  ) +
+  theme_bw(base_size = 16) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "none",
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
+    plot.title = element_text(size = 20, color = "black", hjust = 0.5),
+    axis.text = element_text(size = 20, color = "black"),
+    axis.title = element_text(size = 20, color = "black"),
+    legend.text = element_text(size = 20, color = "black")
+  )
+
+p
+
+
+#ggsave(filename = "~/Desktop/replot/culture/PMA/indoor/dfoe.pdf", width = 5,height = 4)
+```
+
+## 9.6 Sand-surface alteration
+
+```{r validation-surface-alteration}
+## SEM 统计分析 
+library(tidyverse)
+library(patchwork)
+library(rstatix)
+
+# Read data
+
+data <- read.delim('~/Desktop/replot/culture/field-experiment/cq-eds-20260430/sem-field.txt',
+                   stringsAsFactors = FALSE, check.names = FALSE,
+                   header = TRUE, sep = "\t")
+
+data <- read.delim(
+  "~/Desktop/replot/culture/field-experiment/cq-eds-20260430/sem-indoor.txt",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  header = TRUE,
+  sep = "\t"
+)
+
+names(data)
+
+
+# Create biological replicate ID
+# Every two consecutive ROIs within the same group = one biological replicate
+
+df_rep <- data %>%
+  group_by(group) %>%
+  mutate(
+    row_in_group = row_number(),
+    replicate = ceiling(row_in_group / 2)
+  ) %>%
+  group_by(group, replicate) %>%
+  summarise(
+    Mean_local_variance = mean(Mean_local_variance, na.rm = TRUE),
+    Altered_surface_fraction = mean(Altered_surface_fraction, na.rm = TRUE),
+    ROI_area_um2 = mean(ROI_area_um2, na.rm = TRUE),
+    altered_area_um2 = mean(altered_area_um2, na.rm = TRUE),
+    n_ROI = n(),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    group = recode(
+      group,
+      "KO" = "ΔBibC-like",
+      "OE" = "OE-BibC-like"
+    ),
+    group = factor(
+      group,
+      levels = c("NC", "WT", "ΔBibC-like", "OE-BibC-like")
+    )
+  )
+
+df_rep
+
+# Check n per group
+df_rep %>%
+  count(group)
+
+
+# Statistics
+
+kw_var <- df_rep %>%
+  kruskal_test(Mean_local_variance ~ group)
+
+dunn_var <- df_rep %>%
+  dunn_test(
+    Mean_local_variance ~ group,
+    p.adjust.method = "BH"
+  )
+
+kw_frac <- df_rep %>%
+  kruskal_test(Altered_surface_fraction ~ group)
+
+dunn_frac <- df_rep %>%
+  dunn_test(
+    Altered_surface_fraction ~ group,
+    p.adjust.method = "BH"
+  )
+
+kw_var
+dunn_var
+
+kw_frac
+dunn_frac
+
+
+# Colors
+
+box_colors <- c(
+  "NC"           = "#6E6E6E",
+  "WT"           = "#7FA35A",
+  "ΔBibC-like"   = "#C9A227",
+  "OE-BibC-like" = "#6FA8C9"
+)
+
+line_colors <- c(
+  "NC"           = "#4A4A4A",
+  "WT"           = "#6B8E23",
+  "ΔBibC-like"   = "#B58900",
+  "OE-BibC-like" = "#4F8FB3"
+)
+
+
+# Theme
+
+theme_my <- theme_bw(base_size = 20) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "none",
+    panel.border = element_rect(
+      color = "black",
+      fill = NA,
+      linewidth = 0.8
+    ),
+    plot.title = element_text(
+      size = 20,
+      color = "black",
+      hjust = 0.5
+    ),
+    axis.text = element_text(
+      size = 20,
+      color = "black"
+    ),
+    axis.title = element_text(
+      size = 20,
+      color = "black"
+    ),
+    axis.line = element_line(
+      color = "black",
+      linewidth = 0.6
+    ),
+    axis.ticks = element_line(
+      color = "black",
+      linewidth = 0.6
+    )
+  )
+
+
+# Y-axis limits
+
+ylim_number <- c(
+  max(0, min(df_rep$Mean_local_variance, na.rm = TRUE) - 10),
+  max(df_rep$Mean_local_variance, na.rm = TRUE) + 10
+)
+
+ylim_relative <- c(
+  max(0, min(df_rep$Altered_surface_fraction, na.rm = TRUE) - 0.4),
+  max(df_rep$Altered_surface_fraction, na.rm = TRUE) + 1
+)
+
+
+# Panel 1: Mean local variance
+
+p1 <- ggplot(
+  df_rep,
+  aes(x = group, y = Mean_local_variance)
+) +
+  geom_boxplot(
+    aes(fill = group, color = group),
+    width = 0.62,
+    outlier.shape = NA,
+    linewidth = 0.7,
+    alpha = 0.9
+  ) +
+  geom_point(
+    position = position_jitter(width = 0.10, height = 0),
+    shape = 21,
+    size = 2.8,
+    stroke = 0.4,
+    fill = "#5D6568",
+    color = "#363F43",
+    alpha = 0.85
+  ) +
+  scale_fill_manual(values = box_colors) +
+  scale_color_manual(values = line_colors) +
+  scale_y_continuous(limits = ylim_number) +
+  labs(
+    title = "Mean local variance",
+    x = NULL,
+    y = "(a.u.)"
+  ) +
+  theme_my +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  )
+
+
+# Panel 2: Altered surface fraction
+
+p2 <- ggplot(
+  df_rep,
+  aes(x = group, y = Altered_surface_fraction)
+) +
+  geom_boxplot(
+    aes(fill = group, color = group),
+    width = 0.62,
+    outlier.shape = NA,
+    linewidth = 0.7,
+    alpha = 0.9
+  ) +
+  geom_point(
+    position = position_jitter(width = 0.10, height = 0),
+    shape = 21,
+    size = 2.8,
+    stroke = 0.4,
+    fill = "#5D6568",
+    color = "#363F43",
+    alpha = 0.85
+  ) +
+  scale_fill_manual(values = box_colors) +
+  scale_color_manual(values = line_colors) +
+  scale_y_continuous(limits = ylim_relative) +
+  labs(
+    title = "Altered surface fraction",
+    x = NULL,
+    y = "(%)"
+  ) +
+  theme_my +
+  theme(
+    axis.text.x = element_text(
+      angle = 25,
+      hjust = 1,
+      vjust = 1,
+      color = "black",
+      size = 20
+    )
+  )
+
+
+# Combine
+
+p_combined <- p1 / p2 +
+  plot_layout(ncol = 1, heights = c(1, 1))
+
+p_combined
+
+
+# Save
+
+ggsave(
+  "~/Desktop/replot/culture/field-experiment/cq-eds-20260430/sem-indoor_combined.pdf",
+  p_combined,
+  width = 4,
+  height = 7
+)
+
+
+
+
+library(rstatix)
+
+
+# Statistics: Kruskal-Wallis + Dunn
+# based on biological replicates
+
+
+# Panel 1: Mean local variance
+kw_var <- df_rep %>%
+  kruskal_test(Mean_local_variance ~ group)
+
+dunn_var <- df_rep %>%
+  dunn_test(
+    Mean_local_variance ~ group,
+    p.adjust.method = "BH"
+  )
+
+# Panel 2: Altered surface fraction
+kw_frac <- df_rep %>%
+  kruskal_test(Altered_surface_fraction ~ group)
+
+dunn_frac <- df_rep %>%
+  dunn_test(
+    Altered_surface_fraction ~ group,
+    p.adjust.method = "BH"
+  )
+
+# Output results
+kw_var
+dunn_var
+
+kw_frac
+dunn_frac
+
+
+
+```
+
+## 9.7 DTPA-extractable iron
+```{r DTPA-extractable-Fe}
+library(dplyr)
+   library(ggplot2)
+   
+   data <- read.delim(
+     '~/Desktop/replot/culture/field-experiment/ACBD/DTPA-plot.txt',
+     stringsAsFactors = FALSE,
+     check.names = FALSE,
+     header = TRUE,
+     sep = "\t"
+   )
+   
+
+   # 1. 因子顺序
+
+   data$type <- factor(data$type, levels = c("Field plots", "Indoor trays"))
+   data$group <- factor(data$group, levels = c("NC","WT","KO","OS"))
+   data$day   <- as.numeric(data$day)
+   data$Fe    <- as.numeric(data$Fe)
+   
+   # 横坐标标签：把 day 0 合并成 Baseline
+   data <- data %>%
+     mutate(
+       day_plot = ifelse(day == 0, "Baseline", as.character(day)),
+       day_plot = factor(day_plot, levels = c("Baseline", "21", "42", "63", "84"))
+     )
+   
+
+   # 2. 配色
+
+   box_colors <- c(
+     "NC" = "#6E6E6E",
+     "KO" = "#C9A227",
+     "WT" = "#7FA35A",
+     "OS" = "#6FA8C9"
+   )
+   
+   line_colors <- c(
+     "NC" = "#4A4A4A",
+     "KO" = "#9C7B0B",
+     "WT" = "#4E7D36",
+     "OS" = "#3E7FA6"
+   )
+   
+   theme_my <- theme_bw(base_size = 20) +
+     theme(
+       panel.grid = element_blank(),
+       legend.position = "none",
+       strip.background = element_rect(fill = "white"),
+       axis.text  = element_text(size = 18, color = "black"),
+       axis.title = element_text(size = 20, color = "black"),
+       strip.text = element_text(size = 20),
+       panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8)
+     )
+   
+   
+   # 3. 作图
+   
+   p_dtpa <-  ggplot() +
+     # baseline 空心 boxplot
+     geom_boxplot(
+       data = data %>% filter(day == 0),
+       aes(x = day_plot, y = Fe, group = day_plot),
+       width = 0.45,
+       fill = NA,
+       color = "#546e7a",
+       outlier.shape = NA,
+       linewidth = 0.8
+     ) +
+     # baseline 空心点
+     geom_jitter(
+       data = data %>% filter(day == 0),
+       aes(x = day_plot, y = Fe),
+       width = 0.08,
+       shape = 1,
+       size = 2.0,
+       stroke = 0.9,
+       color = "#546e7a",
+       alpha = 0.9
+     ) +
+     # 其余时间点彩色 boxplot
+     geom_boxplot(
+       data = data %>% filter(day != 0),
+       aes(x = day_plot, y = Fe, fill = group, color = group),
+       width = 0.62,
+       position = position_dodge(width = 0.68),
+       outlier.shape = NA,
+       alpha = 0.85,
+       linewidth = 0.7
+     ) +
+     # 其余时间点散点
+     geom_jitter(
+       data = data %>% filter(day != 0),
+       aes(x = day_plot, y = Fe, shape = group),
+       position = position_jitterdodge(
+         jitter.width = 0.10,
+         dodge.width = 0.68
+       ),
+       fill = "#37474F",
+       color = "#37474F",
+       stroke = 0.3,
+       size = 1.8,
+       alpha = 0.75,
+       show.legend = FALSE
+     ) +
+     scale_shape_manual(values = c(21, 21, 21, 21)) +
+     facet_wrap(~ type, scales = "free_x") +
+     scale_fill_manual(values = box_colors) +
+     scale_color_manual(values = line_colors) +
+     scale_y_continuous(expand = expansion(mult = c(0.03, 0.10))) +
+     labs(
+       x = "",
+       y = "DTPA-extractable Fe (mg/kg dry soil)",
+       title = ""
+     ) +
+     theme_my +
+     theme(
+       axis.text.x = element_text(angle = 25, hjust = 1, vjust = 1)
+     )
+   
+   print(p_dtpa)
+   
+   ggsave(
+     "~/Desktop/replot/culture/field-experiment/ACBD/DTPA_Fe_facet_by_type.pdf",
+     p_dtpa,
+     width = 10,
+     height = 5
+   )
+   
+   
+   library(dplyr)
+   library(FSA)
+   library(multcompView)
+   
+   data <- read.delim(
+     '~/Desktop/replot/culture/field-experiment/ACBD/DTPA-plot.txt',
+     stringsAsFactors = FALSE,
+     check.names = FALSE,
+     header = TRUE,
+     sep = "\t"
+   )
+   
+   data$type  <- factor(data$type, levels = c("Field plots", "Indoor trays"))
+   data$group <- factor(data$group, levels = c("NC", "KO", "WT", "OS"))
+   data$day   <- as.numeric(data$day)
+   data$Fe    <- as.numeric(data$Fe)
+   
+   field84 <- data %>%
+     filter(type == "Field plots", day == 84)
+   
+   # KW
+   kw_field <- kruskal.test(Fe ~ group, data = field84)
+   print(kw_field)
+   
+   # Dunn
+   dunn_field <- dunnTest(Fe ~ group, data = field84)
+   print(dunn_field$res)
+   
+   # 字母分组
+   comp_field <- gsub(" - ", "-", dunn_field$res$Comparison)
+   p_field <- dunn_field$res$P.adj
+   names(p_field) <- comp_field
+   
+   letters_field <- multcompLetters(p_field)$Letters
+   letters_field_df <- data.frame(
+     group = names(letters_field),
+     letter = letters_field,
+     stringsAsFactors = FALSE
+   )
+   
+   print(letters_field_df)
+   
+   
+   
+   
+   library(dplyr)
+   library(lme4)
+   library(lmerTest)
+   library(emmeans)
+   
+   indoor <- data %>%
+     filter(type == "Indoor trays", day != 0) %>%
+     mutate(
+       day = factor(day, levels = c(21, 42, 63, 84)),
+       sample_id = sample
+     )
+   
+   # 检查 sample 是否跨时间重复
+   check_indoor <- indoor %>%
+     group_by(sample_id) %>%
+     summarise(n_day = n_distinct(day), .groups = "drop")
+   
+   print(check_indoor)
+   
+   m_dtpa <- lmer(Fe ~ group * day + (1 | sample_id), data = indoor)
+   
+   summary(m_dtpa)
+   anova(m_dtpa)
+   
+   anova_dtpa <- as.data.frame(anova(m_dtpa))
+   anova_dtpa$term <- rownames(anova_dtpa)
+   rownames(anova_dtpa) <- NULL
+   print(anova_dtpa)
+   
+   # 事后比较：每个 day 内比较 group
+   emm_day_group <- emmeans(m_dtpa, ~ group | day)
+   pair_day_group <- contrast(emm_day_group, method = "pairwise")
+   
+   print(emm_day_group)
+   print(pair_day_group)
+
+```
+
+
+ ## 9.8 Sequential iron extraction
+```{r validation-dtpa-iron}
+   library(dplyr)
+   library(ggplot2)
+   
+   data <- read.delim(
+     '~/Desktop/replot/culture/field-experiment/ACBD/field-abcd-plot.txt',
+     stringsAsFactors = FALSE,
+     check.names = FALSE,
+     header = TRUE,
+     sep = "\t"
+   )
+   
+   # 因子顺序
+   data$stage <- factor(
+     data$stage,
+     levels = c("Step 1", "Step 2", "Step 3", "Step 4")
+   
+   )
+   
+   data$group <- factor(data$group, levels = c("NC", "WT","KO", "OS"))
+   data$day   <- as.numeric(data$day)
+   data$Fe    <- as.numeric(data$Fe)
+   
+   # 配色
+   box_colors <- c(
+     "NC" = "#6E6E6E",
+     "KO" = "#C9A227",
+     "WT" = "#7FA35A",
+     "OS" = "#6FA8C9"
+   )
+   
+   line_colors <- c(
+     "NC" = "#4A4A4A",
+     "KO" = "#9C7B0B",
+     "WT" = "#4E7D36",
+     "OS" = "#3E7FA6"
+   )
+   
+   # 主题
+   theme_my <- theme_bw(base_size = 15) +
+     theme(
+       panel.grid = element_blank(),
+       legend.position = "none",
+       strip.background = element_rect(fill = "white"),
+       axis.text  = element_text(size = 15, color = "black"),
+       axis.title = element_text(size = 15, color = "black"),
+       strip.text = element_text(size = 15),
+       panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8)
+     )
+   
+   
+   # 1. 计算每个 step 的 baseline（0 day）
+   #    默认用 mean；如果你想更稳一点，可改成 median
+ 
+   baseline_df <- data %>%
+     filter(day == 0) %>%
+     group_by(stage) %>%
+     summarise(
+       baseline_mean   = mean(Fe, na.rm = TRUE),
+       baseline_median = median(Fe, na.rm = TRUE),
+       .groups = "drop"
+     )
+   
+  
+   # 2. 只保留 84 day，并计算 FC / log2FC
+  
+   plot_df <- data %>%
+     filter(day == 84) %>%
+     left_join(baseline_df, by = "stage") %>%
+     mutate(
+       FC_mean      = Fe / baseline_mean,
+       FC_median    = Fe / baseline_median,
+       log2FC_mean  = log2(Fe / baseline_mean),
+       log2FC_median= log2(Fe / baseline_median)
+     )
+   
+   # 查看计算结果
+   print(plot_df)
+   
+   
+   # 3. 主推荐图：log2 fold change relative to baseline(mean)
+   
+   p_log2fc <- ggplot(plot_df, aes(x = stage, y = log2FC_mean, fill = group)) +
+     geom_hline(
+       yintercept = 0,
+       linetype = "dashed",
+       color = "grey40",
+       linewidth = 0.6
+     ) +
+     geom_boxplot(
+       aes(color = group),
+       width = 0.62,
+       position = position_dodge(width = 0.68),
+       outlier.shape = NA,
+       alpha = 0.85,
+       linewidth = 0.7
+     ) +
+     geom_jitter(
+       aes(group = group),
+       color = "#37474F",
+       position = position_jitterdodge(
+         jitter.width = 0.08,
+         dodge.width = 0.68
+       ),
+       size = 1.8,
+       alpha = 0.75,
+       show.legend = FALSE
+     ) +
+     scale_fill_manual(values = box_colors) +
+     scale_color_manual(values = line_colors) +
+     scale_y_continuous(expand = expansion(mult = c(0.08, 0.12))) +
+     labs(
+       x = "",
+       y = expression(log[2]~FC~"(vs. day 0 baseline)")
+     ) +
+     theme_my
+   
+   print(p_log2fc)
+   
+   
+   ggsave(
+     "~/Desktop/replot/culture/field-experiment/ACBD/Fe_log2FC_field.pdf",
+     p_log2fc,
+     width = 5,
+     height = 3.5
+   )
+   
+   
+     library(dplyr)
+   library(ggplot2)
+   
+   data <- read.delim(
+     '~/Desktop/replot/culture/field-experiment/ACBD/indoor-abcd-plot.txt',
+     stringsAsFactors = FALSE,
+     check.names = FALSE,
+     header = TRUE,
+     sep = "\t"
+   )
+   
+   data <- read.delim(
+     '~/Desktop/replot/culture/field-experiment/ACBD/indoor-abcd-plot.txt',
+     stringsAsFactors = FALSE,
+     check.names = FALSE,
+     header = TRUE,
+     sep = "\t"
+   )
+   
+
+   # 1. 因子顺序
+  
+   data$stage <- factor(
+     data$stage,
+     levels = c("Step 1", "Step 2", "Step 3", "Step 4")
+    
+   )
+   
+   data$group <- factor(data$group, levels = c("NC", "WT","KO","OS"))
+   data$day   <- as.numeric(data$day)
+   data$Fe    <- as.numeric(data$Fe)
+   
+   
+   # 2. 把 day 0 合并成 Baseline
+
+   plot_abs <- data %>%
+     mutate(
+       plot_group = ifelse(day == 0, "Baseline", as.character(group)),
+       plot_group = factor(plot_group, levels = c("Baseline", "NC", "WT", "KO","OS")),
+       day_plot   = ifelse(day == 0, "Baseline", "Day 84")
+     )
+   
+   plot_abs <- data %>%
+     mutate(
+       plot_group = ifelse(day == 0, "Baseline", as.character(group)),
+       plot_group = factor(plot_group, levels = c("Baseline", "NC", "WT", "KO","OS"))
+     )
+   
+   
+   # 3. 配色
+ 
+   box_colors <- c(
+     "NC" = "#6E6E6E",
+     "KO" = "#C9A227",
+     "WT" = "#7FA35A",
+     "OS" = "#6FA8C9"
+   )
+   
+   line_colors <- c(
+     "NC" = "#4A4A4A",
+     "KO" = "#9C7B0B",
+     "WT" = "#4E7D36",
+     "OS" = "#3E7FA6"
+   )
+   
+   theme_my <- theme_bw(base_size = 20) +
+     theme(
+       panel.grid = element_blank(),
+       legend.position = "none",
+       strip.background = element_rect(fill = "white"),
+       axis.text  = element_text(size = 18, color = "black"),
+       axis.title = element_text(size = 20, color = "black"),
+       strip.text = element_text(size = 18),
+       panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8)
+     )
+   
+  
+   # 4. 绝对值附图
+   #    每个 facet 一个 step
+   #    左边：Baseline（空心）
+   #    右边：84d 四组（实心）
+   
+   p_abs <- ggplot() +
+     # baseline 空心 boxplot
+     geom_boxplot(
+       data = plot_abs %>% filter(day == 0),
+       aes(x = plot_group, y = Fe),
+       width = 0.45,
+       fill = NA,
+       color = "#546e7a",
+       outlier.shape = NA,
+       linewidth = 0.8
+     ) +
+     # baseline 空心点
+     geom_jitter(
+       data = plot_abs %>% filter(day == 0),
+       aes(x = plot_group, y = Fe),
+       width = 0.08,
+       shape = 1,
+       size = 2.1,
+       stroke = 0.9,
+       color = "#546e7a",
+       alpha = 0.9
+     ) +
+     # 84 d 彩色 boxplot
+     geom_boxplot(
+       data = plot_abs %>% filter(day == 84),
+       aes(x = plot_group, y = Fe, fill = plot_group, color = plot_group),
+       width = 0.62,
+       outlier.shape = NA,
+       alpha = 0.85,
+       linewidth = 0.7
+     ) +
+     # 84 d 点
+     geom_jitter(
+       data = plot_abs %>% filter(day == 84),
+       aes(x = plot_group, y = Fe),
+       width = 0.10,
+       size = 1.8,
+       alpha = 0.75,
+       color = "#37474F"
+     ) +
+     facet_wrap(~ stage, ncol = 4, scales = "free_y") +
+     scale_fill_manual(
+       values = box_colors,
+       breaks = c("NC", "KO", "WT", "OS")
+     ) +
+     scale_color_manual(
+       values = line_colors,
+       breaks = c("NC", "KO", "WT", "OS")
+     ) +
+     scale_y_continuous(expand = expansion(mult = c(0.03, 0.10))) +
+     labs(
+       x = "",
+       y = "",
+       title = ""
+     ) +  scale_y_continuous(expand = expansion(mult = c(0.02, 0.12))) +
+     theme_my +
+     theme(axis.text.x = element_text(angle = 25, hjust = 1, vjust = 1)) 
+   
+   print(p_abs)
+   
+   ggsave(
+     "~/Desktop/replot/culture/field-experiment/ACBD/Fe_absolute_by_stage_indoor.pdf",
+     p_abs,
+     width = 14,
+     height = 5
+   )
+   
+   
+    ## 统计分析 包含baseline 
+   library(dplyr)
+   library(FSA)
+   library(multcompView)
+   
+   data <- read.delim(
+     '~/Desktop/replot/culture/field-experiment/ACBD/indoor-abcd-plot.txt',
+     stringsAsFactors = FALSE,
+     check.names = FALSE,
+     header = TRUE,
+     sep = "\t"
+   )
+   
+   data <- read.delim('~/Desktop/replot/culture/field-experiment/ACBD/field-abcd-plot.txt',
+                      stringsAsFactors = FALSE, check.names = FALSE,
+                      header = TRUE, sep = "\t")
+   
+   
+   
+   data$stage <- factor(
+     data$stage,
+     levels = c("Step 1", "Step 2", "Step 3", "Step 4")
+   )
+   
+   data$group <- factor(data$group, levels = c("NC", "WT", "KO", "OS"))
+   data$day   <- as.numeric(data$day)
+   data$Fe    <- as.numeric(data$Fe)
+   
+   # 把 day 0 作为 Baseline 组；day 84 保留原 group
+   stat_data <- data %>%
+     mutate(
+       stat_group = ifelse(day == 0, "Baseline", as.character(group)),
+       stat_group = factor(
+         stat_group,
+         levels = c("Baseline", "NC", "WT", "KO", "OS")
+       )
+     ) %>%
+     filter(day %in% c(0, 84))
+   
+   kw_res_list <- list()
+   dunn_res_list <- list()
+   letters_list <- list()
+   
+   for (st in levels(stat_data$stage)) {
+     
+     df_sub <- stat_data %>%
+       filter(stage == st)
+     
+     # 1) Kruskal-Wallis
+     kw_res <- kruskal.test(Fe ~ stat_group, data = df_sub)
+     kw_res_list[[st]] <- kw_res
+     
+     # 2) Dunn post hoc
+     dunn_res <- dunnTest(Fe ~ stat_group, data = df_sub, method = "bh")
+     dunn_res_list[[st]] <- dunn_res
+     
+     dunn_tbl <- dunn_res$res
+     
+     comps <- gsub(" - ", "-", dunn_tbl$Comparison)
+     pvals <- dunn_tbl$P.adj
+     names(pvals) <- comps
+     
+     # 3) compact letters
+     let <- multcompLetters(pvals)$Letters
+     
+     letters_df <- data.frame(
+       stage = st,
+       stat_group = names(let),
+       letter = let,
+       stringsAsFactors = FALSE
+     )
+     
+     letters_list[[st]] <- letters_df
+   }
+   
+   letters_df_all <- bind_rows(letters_list)
+   
+   kw_summary <- data.frame(
+     stage = names(kw_res_list),
+     statistic = sapply(kw_res_list, function(x) unname(x$statistic)),
+     p_value = sapply(kw_res_list, function(x) x$p.value)
+   )
+   
+   print(kw_summary)
+   print(letters_df_all)
+   
+   # 输出每个 Step 的 Dunn 详细结果
+   for (st in names(dunn_res_list)) {
+     cat("\n====================\n")
+     cat(st, "\n")
+     print(dunn_res_list[[st]]$res)
+   }
+   
+   
+   
+   
+  
+   
+#   FC LMM
+   library(dplyr)
+   library(lme4)
+   library(lmerTest)
+   library(emmeans)
+   
+   data <- read.delim(
+     '~/Desktop/replot/culture/field-experiment/ACBD/indoor-abcd-plot.txt',
+     stringsAsFactors = FALSE,
+     check.names = FALSE,
+     header = TRUE,
+     sep = "\t"
+   )
+   
+   data <- read.delim('~/Desktop/replot/culture/field-experiment/ACBD/field-abcd-plot.txt',
+                      stringsAsFactors = FALSE, check.names = FALSE,
+                      header = TRUE, sep = "\t")
+   
+   
+   data$stage <- factor(
+     data$stage,
+     levels = c("Step 1", "Step 2", "Step 3", "Step 4")
+   )
+   
+   data$group <- factor(data$group, levels = c("NC", "KO", "WT", "OS"))
+   data$day   <- as.numeric(data$day)
+   data$Fe    <- as.numeric(data$Fe)
+   
+   
+   # 1. 计算每个 step 的 day 0 baseline
+  
+   baseline_df <- data %>%
+     filter(day == 0) %>%
+     group_by(stage) %>%
+     summarise(
+       baseline_mean = mean(Fe, na.rm = TRUE),
+       .groups = "drop"
+     )
+   
+ 
+   # 2. 只取 84 天，计算 log2FC
+ 
+   plot_df <- data %>%
+     filter(day == 84) %>%
+     left_join(baseline_df, by = "stage") %>%
+     mutate(
+       log2FC = log2(Fe / baseline_mean)
+     )
+   
+ 
+   # 3. 构造 repeated sample ID
+   #    假设 sample 名如 NC-1 / WT-2 / KO-3，且同一个 sample 在4个 step里一致
+   
+   plot_df <- plot_df %>%
+     mutate(
+       sample_id = sample
+     )
+   
+   # 检查每个 sample 是否覆盖 4 个 step
+   check_steps <- plot_df %>%
+     group_by(sample_id) %>%
+     summarise(n_stage = n_distinct(stage), .groups = "drop")
+   
+   print(check_steps)
+   
+   
+   # 4. LMM
+  
+   m1 <- lmer(log2FC ~ group * stage + (1 | sample_id), data = plot_df)
+   
+   summary(m1)
+   anova(m1)
+   
+   # 导出 ANOVA 表
+   anova_tbl <- as.data.frame(anova(m1))
+   anova_tbl$term <- rownames(anova_tbl)
+   rownames(anova_tbl) <- NULL
+   print(anova_tbl)
+   
+   write.table(
+     anova_tbl,
+     "~/Desktop/replot/culture/field-experiment/ACBD/LMM_log2FC_ANOVA.txt",
+     sep = "\t", quote = FALSE, row.names = FALSE
+   )
+   
+ 
+   # 5. 事后比较
+   #    (a) 每个 stage 内比较 group
+ 
+   emm_stage_group <- emmeans(m1, ~ group | stage)
+   pair_stage_group <- contrast(emm_stage_group, method = "pairwise")
+   
+   print(emm_stage_group)
+   print(pair_stage_group)
+   
+   write.table(
+     as.data.frame(pair_stage_group),
+     "~/Desktop/replot/culture/field-experiment/ACBD/LMM_pairwise_group_within_stage.txt",
+     sep = "\t", quote = FALSE, row.names = FALSE
+   )
+   
+   
+   #    (b) 每个 group 内比较 stage
+
+   emm_group_stage <- emmeans(m1, ~ stage | group)
+   pair_group_stage <- contrast(emm_group_stage, method = "pairwise", adjust = "BH")
+   
+   print(emm_group_stage)
+   print(pair_group_stage)
+   
+   write.table(
+     as.data.frame(pair_group_stage),
+     "~/Desktop/replot/culture/field-experiment/ACBD/LMM_pairwise_stage_within_group.txt",
+     sep = "\t", quote = FALSE, row.names = FALSE
+   )
+   
+   
+   library(dplyr)
+   library(FSA)
+   library(multcompView)
+   
+   data <- read.delim(
+     '~/Desktop/replot/culture/field-experiment/ACBD/indoor-abcd-plot.txt',
+     stringsAsFactors = FALSE,
+     check.names = FALSE,
+     header = TRUE,
+     sep = "\t"
+   )
+   
+  
+   # 1. 因子顺序
+  
+   data$stage <- factor(
+     data$stage,
+     levels = c("Step 1", "Step 2", "Step 3", "Step 4")
+   )
+   
+   data$group <- factor(data$group, levels = c("NC", "KO", "WT", "OS"))
+   data$day   <- as.numeric(data$day)
+   data$Fe    <- as.numeric(data$Fe)
+   
+   
+   # 2. 计算每个 step 的 baseline
+   #    默认用 mean
+   
+   baseline_df <- data %>%
+     filter(day == 0) %>%
+     group_by(stage) %>%
+     summarise(
+       baseline_mean = mean(Fe, na.rm = TRUE),
+       .groups = "drop"
+     )
+   
+  
+   # 3. 只保留 84 d，并计算 FC / log2FC
+  
+   fc_df <- data %>%
+     filter(day == 84) %>%
+     left_join(baseline_df, by = "stage") %>%
+     mutate(
+       FC = Fe / baseline_mean,
+       log2FC = log2(Fe / baseline_mean)
+     )
+   
+   print(fc_df)
+   
+   # 4. 每个 step 做 KW + Dunn
+   #    这里以 log2FC 为例
+   #    如果你想直接用 FC，把 log2FC 改成 FC 即可
+  
+   kw_res_list <- list()
+   dunn_res_list <- list()
+   letters_list <- list()
+   
+   for (st in levels(fc_df$stage)) {
+     
+     df_sub <- fc_df %>% filter(stage == st)
+     
+     # KW
+     kw_res <- kruskal.test(log2FC ~ group, data = df_sub)
+     kw_res_list[[st]] <- kw_res
+     
+     # Dunn
+     dunn_res <- dunnTest(log2FC ~ group, data = df_sub, method = "bh")
+     dunn_res_list[[st]] <- dunn_res
+     
+     dunn_tbl <- dunn_res$res
+     
+     # 生成字母分组
+     comps <- gsub(" - ", "-", dunn_tbl$Comparison)
+     pvals <- dunn_tbl$P.adj
+     names(pvals) <- comps
+     
+     let <- multcompLetters(pvals)$Letters
+     
+     letters_df <- data.frame(
+       stage = st,
+       group = names(let),
+       letter = let,
+       stringsAsFactors = FALSE
+     )
+     
+     letters_list[[st]] <- letters_df
+   }
+   
+   letters_df_all <- bind_rows(letters_list)
+   
+   
+   # 5. 汇总 KW 结果
+   
+   kw_summary <- data.frame(
+     stage = names(kw_res_list),
+     statistic = sapply(kw_res_list, function(x) unname(x$statistic)),
+     p_value = sapply(kw_res_list, function(x) x$p.value)
+   )
+   
+   print(kw_summary)
+   print(letters_df_all)
+   
+   
+   # 6. 查看每个 step 的 Dunn 详细结果
+  
+   for (st in names(dunn_res_list)) {
+     cat("\n====================\n")
+     cat(st, "\n")
+     print(dunn_res_list[[st]]$res)
+   }
+   
+   
+```

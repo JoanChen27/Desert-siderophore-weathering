@@ -32,7 +32,10 @@ tidyverse, vegan, ggplot2, ggtext, patchwork, ggrepel, broom, phyloseq, ggtree, 
 
 Input data files are **not** included in this repository. The scripts reference local file paths (e.g. `~/Desktop/replot/...`, `~/Documents/...`); update the path variables at the top of each file to point to your own data locations before running.
 
-Sequencing data are deposited at ENA. See the manuscript for accession details and data availability.
+The underlying datasets are publicly available as described in the manuscript:
+
+- Raw sequencing reads, metagenome-assembled genomes (MAGs), isolate 16S sequences and genomes: ENA under [PRJEB60065](https://www.ebi.ac.uk/ena/browser/view/PRJEB60065), [PRJEB128436](https://www.ebi.ac.uk/ena/browser/view/PRJEB128436) and [PRJEB128464](https://www.ebi.ac.uk/ena/browser/view/PRJEB128464)
+- LC–MS metabolomics data: MetaboLights under [MTBLS15530](https://www.ebi.ac.uk/metabolights/MTBLS15530)
 
 ## Status
 

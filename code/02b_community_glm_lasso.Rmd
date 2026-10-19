@@ -1,0 +1,1579 @@
+---
+title: "Desert restoration project -- Part 2b: Community modeling I (GLM, permutation test, AEM, LASSO)"
+author: "Qiong_Chen"
+date: "2026-08-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+source("00_setup.R")
+```
+
+## 2.7 GLM regression model and visualization
+
+```{r GLM}
+# to detect valuables changed with ages, here is one of the example with figure 2C
+library(pscl)
+library(MASS)
+data <- read.delim('~/Desktop/replot/c_means/species/si_species.txt',row.names = 1,
+                   sep = '\t',stringsAsFactors = FALSE, check.names = FALSE)
+data <- data[1:217,]
+data <- as.data.frame(apply(data,2,as.numeric))
+View(data)
+# Convert year to numeric (if necessary)
+age <- as.numeric(data$year)
+
+# Create a list of response variables
+response_vars <- colnames(data)[2:76]
+
+# Create an empty data frame to store the results
+results <- data.frame(response_var = numeric(),
+                      slope_coeff = numeric(),
+                      p_value = numeric(),
+                      adj_r_square = numeric(),
+                      stringsAsFactors = FALSE)
+
+#family = quasipoisson(link = "log")  when not in normal distribution
+# Loop over the response variables and fit a GLM for each
+for (i in seq_along(response_vars)) {
+  # Fit the GLM with Poisson error distribution and log link function
+  model <- glm(data[, response_vars[i]] ~ age, data = data)
+  # Check assumptions and extract slope coefficient and p-value for whole model
+  
+  #model <- glm(data[, response_vars[i]] ~ age, data = data)
+ # norm_test <- shapiro.test(resid(model)) #to perform the Shapiro-Wilk normality test on a vector or a data frame column
+ # print(norm_test)
+  p_val <- summary(model)$coefficients[2,4]
+  print(p_val)
+  slope_coeff <- summary(model)$coefficients[2, 1]
+  adj_r_square <- with(summary(model), 1 - deviance/null.deviance)
+  
+  # Adjust p-value using BH method
+  #adj_p_val <- p.adjust(p_val, method = "BH")
+  
+  # Store the results in the data frame
+  results[i, ] <- list(response_var = response_vars[i],
+                       slope_coeff = slope_coeff,
+                       p_value = p_val,
+                       adj_r_square = adj_r_square)
+  }
+
+final_result <- cbind(results,padjust = p.adjust(results[,"p_value"], method="BH"))
+
+
+table(final_result$padjust < 0.05)
+
+#write.table(final_result, '/Users/chenqiong/Desktop/replot/metabo//si_species_glm.txt',sep="\t", col.names = NA,quote = FALSE)
+
+# visualization
+# mydata <- final_result
+ mydata$phylum <- factor( mydata$phylum, levels = rev(mydata$phylum))
+    mydata$id <- factor(mydata$id, levels = c(mydata$id))
+    levels(mydata$id)
+    
+   
+    #si
+    ggdotchart(mydata, x = "id", y = "Regression_beta_coefficient",
+               color = "type",                            # Color by groups
+               palette = c('#14A6B1','#E3AF2E'), # Custom color palette
+               sorting = "none",                # Sort value in descending order
+               add = "segments",    # Add segments from y = 0 to dots
+               add.params = list(size = 3),
+               rotate = FALSE,                                # Rotate vertically
+               group = 'id',                                # Order by groups
+               dot.size = "effect", # Large dot size
+               xlab="",
+               ylab="Beta coefficient",
+               ggtheme = theme_pubr()                        # ggplot2 theme
+    ) + geom_hline(yintercept = 0, linetype = 2, color = 'lightgray') +
+   #  coord_fixed() +
+      theme_pubr(base_size = 16) +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1))
+    
+```
+
+## 2.8 Graph-based permutation test
+```{r Graph_based_permutation_test}
+# Figure 2D
+# Figure S3D
+ library("igraph")
+   library("phyloseq")
+   library("phyloseqGraphTest")
+   library("ggnetwork")
+   library("intergraph")
+   library(scales)
+   library(grid)
+   library(ggpubr)
+   vignette("phyloseq_basics")
+   vignette("phyloseq_analysis")
+   
+   #example
+ data("enterotype")
+ str(enterotype)
+ View(enterotype)
+   gt = graph_perm_test(enterotype, sampletype = "SeqTech", type = "mst")
+   gt
+   # Plots a histogram of the permutation distribution of the number of pure edges and a mark showing
+   # the observed number of pure edges.
+   plot_permutations(gt,bins=60) 
+   #When using the graph_perm_test function, a graph is created. This function will plot the graph used
+  # for testing with nodes colored by sample type and edges marked as pure or mixed.
+   plot_test_network(gt)
+   
+   View(gt)
+   
+   otufile = system.file("extdata", "GP_otu_table_rand_short.txt.gz", package = "phyloseq")
+   mapfile = system.file("extdata", "master_map.txt", package = "phyloseq")
+   trefile = system.file("extdata", "GP_tree_rand_short.newick.gz", package = "phyloseq")
+   qiimex = import_qiime(otufile, mapfile, trefile, showProgress = FALSE)
+   
+   qiimex 
+   View(qiimex) 
+   
+   qt = graph_perm_test(qiimex, sampletype = "SampleType", type = "mst")
+   plot_test_network(qt)
+   
+   # change data loaded way
+   
+   write.table(qiimex@tax_table,'/Users/chenqiong/Desktop/plot/graph/tax.table.txt',
+               sep = '\t', col.names = NA, quote = FALSE)
+   
+   otu.table <- read.delim('/Users/chenqiong/Desktop/plot/graph/otu.table.txt',
+                           stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                           header = T, sep = "\t")
+ sam.table <- read.delim('/Users/chenqiong/Desktop/plot/graph/sam.table.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                         header = T, sep = "\t")
+ tax.table <- read.delim('/Users/chenqiong/Desktop/plot/graph/tax.table.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                         header = T, sep = "\t")
+ class(otu.table)
+ class(sam.table)
+ class(tax.table)
+ setdiff(rownames(tax.table),rownames(otu.table))
+ all(rownames(tax.table) == rownames(otu.table))
+ all(colnames(otu.table) == unlist(sam.table[,'SampleID']))
+ 
+                     
+ ps.expo = phyloseq(otu_table(as.matrix(otu.table), taxa_are_rows =TRUE), tax_table(as.matrix(tax.table)), sample_data(sam.table))
+ 
+ gt = graph_perm_test(ps.expo, sampletype = "SampleType", type = "mst")
+ gt
+ # Plots a histogram of the permutation distribution of the number of pure edges and a mark showing
+ # the observed number of pure edges.
+ plot_permutations(gt,bins=60) 
+ #When using the graph_perm_test function, a graph is created. This function will plot the graph used
+ # for testing with nodes colored by sample type and edges marked as pure or mixed.
+ plot_test_network(gt)
+
+  # own data
+ # si
+ 
+ otu.table <- read.delim('/Users/chenqiong/Desktop/plot/graph/SI/sp_si.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                         header = T, sep = "\t")
+ sam.table <- read.delim('/Users/chenqiong/Desktop/plot/graph/SI/sam_si.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                         header = T, sep = "\t")
+ tax.table <- read.delim('/Users/chenqiong/Desktop/plot/graph/SI/tree.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                         header = T, sep = "\t")
+ 
+ # fence
+ otu.table <- read.delim('/Users/chenqiong/Desktop/plot/graph/SI/sp_fence.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                         header = T, sep = "\t")
+ sam.table <- read.delim('/Users/chenqiong/Desktop/plot/graph/SI/sam_fence.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                         header = T, sep = "\t")
+ 
+ 
+ #di
+ otu.table <- read.delim('/Users/chenqiong/Desktop/plot/graph/DI/sp_di.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                         header = T, sep = "\t")
+ sam.table <- read.delim('/Users/chenqiong/Desktop/plot/graph/DI/sam_di.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                         header = T, sep = "\t")
+ tax.table <- read.delim('/Users/chenqiong/Desktop/plot/graph/SI/tree.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                         header = T, sep = "\t")
+ 
+ #see
+ otu.table <- read.delim('/Users/chenqiong/Desktop/plot/graph/see/sp_see.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                         header = T, sep = "\t")
+ sam.table <- read.delim('/Users/chenqiong/Desktop/plot/graph/see/sam_see.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                         header = T, sep = "\t")
+ #sd
+ otu.table <- read.delim('/Users/chenqiong/Desktop/plot/graph/see/sp_sd.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                         header = T, sep = "\t")
+ sam.table <- read.delim('/Users/chenqiong/Desktop/plot/graph/see/sam_sd.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                         header = T, sep = "\t")
+ 
+ 
+ 
+ 
+ sam.table$year <- as.factor(sam.table$year)
+ levels(sam.table$year)
+ class(otu.table)
+ class(sam.table)
+ class(tax.table)
+ setdiff(rownames(tax.table),rownames(otu.table))
+ all(rownames(tax.table) == rownames(otu.table))
+ all(colnames(otu.table) == unlist(sam.table[,'SampleID']))
+ 
+ 
+ ps.soil = phyloseq(otu_table(as.matrix(otu.table), taxa_are_rows =TRUE), tax_table(as.matrix(tax.table)), sample_data(sam.table))
+ 
+ gt = graph_perm_test(ps.soil, sampletype = "year", type = "mst",distance = "bray", nperm = 9999)
+ gt
+ # Plots a histogram of the permutation distribution of the number of pure edges and a mark showing
+ # the observed number of pure edges.
+ plot_permutations(gt,bins=12) + theme_pubr(base_size = 16)
+ 
+ ggsave(filename = '/Users/chenqiong/Desktop/plot/graph/see/sd.per9e-04.pdf', height = 5, width=5.5)
+ 
+ #When using the graph_perm_test function, a graph is created. This function will plot the graph used
+ # for testing with nodes colored by sample type and edges marked as pure or mixed.
+ 
+# "#4DADB9", "#E0B83E", "#E95B2B"  479
+#"#1F6DA7", "#9DC7DD"  fence  # paired
+#  "#319533","#AADA86" biocrust 
+ # "#FD7424", "#FCB76D"
+ plot(rep(1,2),col = c("#319533","#AADA86"), pch = 19, cex = 3)
+ 
+ plot_test_network(gt) + theme(legend.text=element_text(size=14)) +
+   scale_color_manual(values=c("#FD7424", "#FCB76D"), name = "Type")
+ 
+ # 11-17
+ plot_test_network(gt) + theme(legend.text=element_text(size=14)) +
+   scale_color_manual(values=c("#E64B35FF","#00A087FF","#4DBBD5FF","#3C5488FF", "#B19750"), name = "Year")
+ 
+ plot_test_network(gt) + theme(legend.text=element_text(size=14)) +
+   scale_color_manual(values=c("#ffffbf","#e6f598","#abdda4","#66c2a5","#3288bd"), name = "Year")
+ 
+ ggsave(filename = '/Users/chenqiong/Desktop/plot/graph/SI/si.nn-1.pdf', height = 3, width=3.5)
+
+```
+
+## 2.9 AEM
+
+```{r AEM}
+
+    library(ade4)
+    library(mvpart)
+    library(vegan)
+    library(AEM)
+    # library(PCMN)
+    library(packfor)
+
+ weight.time <- function(dates, distmat=NULL,alpha=2, beta=NULL, max.d=NULL, unit.angle="degrees", rot.angle=0, rm.same.y=TRUE,   plot.connexions=TRUE){
+      #
+      # dates : vector of dates.
+      # alpha : exponent of the first weighting function
+      # beta  : exponent of the second weighting function
+      # max.d : maximum distance for weighting. Default value (not recommended in most 
+      #         cases): the maximum distance among dates in the 'dates' vector. 
+      #         A more meaningful solution in many applications is to compute a  
+      #         Moran's I correlogram (for univariate data) or a Mantel correlogram 
+      #         (for multivariate data), and use the distance where the correlation 
+      #         becomes 0 as the value for max.d.
+      #
+      ### F. Guillaume Blanchet - August 2013
+      ##########################################################################################
+      n  <- length(dates)
+      nb <- cell2nb(1,n)
+      xy <- cbind(1:n, rep(1, n), dates)
+      w  <- weight.edges(nb.object=nb, coords=xy, distmat=distmat, alpha=alpha, beta=beta, max.d=max.d, unit.angle=unit.angle, rot.angle=rot.angle, rm.same.y=rm.same.y, plot.connexions=plot.connexions)	
+      w
+    }
+    
+    data_frame = data.frame(col1 = letters[1:119],
+                            col3 = c("2009-01-01","2009-01-02","2009-01-03","2009-01-04","2009-01-05","2009-01-06","2009-01-07","2009-01-08","2009-01-09","2009-01-10","2009-01-11","2009-01-12","2009-01-13","2009-01-14","2009-01-15","2009-01-16","2009-01-17",
+                                     "2008-01-01","2008-01-02","2008-01-03","2008-01-04","2008-01-05","2008-01-06","2008-01-07","2008-01-08","2008-01-09","2008-01-10","2008-01-11","2008-01-12","2008-01-13","2008-01-14","2008-01-15","2008-01-16","2008-01-17","2008-01-18","2008-01-19","2008-01-20",
+                                     "2006-01-01","2006-01-02","2006-01-03","2006-01-04","2006-01-05","2006-01-06","2006-01-07","2006-01-08","2006-01-09","2006-01-10","2006-01-11","2006-01-12","2006-01-13","2006-01-14","2006-01-15","2006-01-16","2006-01-17","2006-01-18","2006-01-19","2006-01-20","2006-01-21","2006-01-22","2006-01-23","2006-01-24","2006-01-25","2006-01-26","2006-01-27","2006-01-28","2006-01-29","2006-01-30",
+                                     "2005-01-01","2005-01-02","2005-01-03","2005-01-04","2005-01-05","2005-01-06","2005-01-07","2005-01-08","2005-01-09","2005-01-10","2005-01-11","2005-01-12","2005-01-13","2005-01-14","2005-01-15","2005-01-16","2005-01-17","2005-01-18","2005-01-19","2005-01-20","2005-01-21","2005-01-22","2005-01-23","2005-01-24","2005-01-25","2005-01-26","2005-01-27","2005-01-28","2005-01-29","2005-01-30","2005-01-31",
+                                     "2003-01-01","2003-01-02","2003-01-03","2003-01-04","2003-01-05","2003-01-06","2003-01-07","2003-01-08","2003-01-09","2003-01-10","2003-01-11","2003-01-12","2003-01-13","2003-01-14","2003-01-15","2003-01-16","2003-01-17","2003-01-18","2003-01-19","2003-01-20","2003-01-21"))
+    
+    
+    # converting to datetime object
+    data_frame[['col3']] <- as.Date(data_frame[['col3']],
+                                    format = "%Y-%m-%d")
+    data <- data_frame[,2]
+    weights <- weight.time(data, alpha=2, max.d=NULL)
+    
+    length(weights)
+   # View(weights)
+    # construct the AEMs themselves
+    aem.out <- aem.time(119, w=weights, moran=TRUE, plot.moran=TRUE)
+    # Compute the redundancy analysis (RDA) of the fauna by the matrix of AEM eigenvectors
+    # modelling positive temporal correlation
+    species <- read.delim("/Users/chenqiong/Desktop/replot/aem/species_si_aem.txt", stringsAsFactors = F, header = T, row.names = 1,sep = "\t", check.names = F)
+   
+    species <- read.delim("/Users/chenqiong/Desktop/replot/diversity/beta/si_species_30.txt", stringsAsFactors = F, header = T, row.names = 1,sep = "\t", check.names = F)
+     table(species['year'])
+    
+    species <- species[,-c(1:2)]
+   # View(species)
+    
+    species.hel <- decostand(species, method="hellinger")
+    
+    sel.aem <- forward.sel(species.hel, aem.out$aem, nperm=9999, alpha=0.10)
+    
+    View(sel.aem)
+    
+    write.table(sel.aem, "/Users/chenqiong/Desktop/replot/aem/sel.aem.0309.species.30.txt", 
+                sep = '\t', col.names = NA, quote = FALSE)
+    
+    sel.aem <- read.delim('/Users/chenqiong/Desktop/replot/aem/sel.aem.0309.txt',row.names = 1,
+                          sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+    
+    
+    
+    aem.select <- sort(sel.aem$order[sel.aem$pval<=0.05])
+    
+    aem.select
+  
+    aem.select.pos.neg <- c(1,2,4,18,44,54,57,60,66,72,86,102,103,114,118) # phylum
+    aem.select.pos.neg <- c(1,2,3,4,5,8,18,33,46,47,60,64,69,70,76,81,92,103,110) # species existed in more than 100 samples
+    aem.select.pos.neg <- c(1,2,3,4,5,7,8,21,33,36,47,64,83,86,92,110,112)
+    
+    aem.vector <- data.frame(aem.out$aem)
+    View(aem.vector)
+    write.table(aem.vector, "/Users/chenqiong/Desktop/replot/aem/aem.vector.0309.species.30.txt", 
+                sep = '\t', col.names = NA, quote = FALSE)
+    # to see what aems look like
+ 
+  
+    #aem.plot <- data.frame(aem.out$aem[, c(1,2,3,7,16,25,35,45,48,49,51,55)])
+    aem.plot <- data.frame(aem.out$aem[, c(1,2,3,4,5,7,8,21,33,36,47,64,83,86,92,110)])
+  #colnames(aem.plot) <- c("AEM1","AEM2","AEM3","AEM7","AEM16","AEM25","AEM35","AEM45","AEM48","AEM49","AEM51","AEM55")
+    # phylum
+    colnames(aem.plot) <- c("AEM1","AEM2","AEM4","AEM18","AEM44","AEM54","AEM60","AEM66","AEM72","AEM102","AEM103","AEM118")
+    # species
+    colnames(aem.plot) <- c("AEM1","AEM2","AEM3","AEM4","AEM5","AEM8","AEM33","AEM46","AEM47","AEM60","AEM64",
+                            'AEM69','AEM70','AEM76','AEM81','AEM92')
+    colnames(aem.plot) <- c("AEM1","AEM2","AEM3","AEM4","AEM5","AEM7","AEM8","AEM21","AEM33","AEM36","AEM47",
+                            'AEM64','AEM83','AEM86','AEM92','AEM110')
+    
+    aem.plot$Group <- c(rep('11',17),rep('12',20),rep('14',30),rep('15',31),rep('17',21))
+    require(dplyr)
+    file = aem.plot
+    aem.plot.mean <- file %>% group_by(Group) %>% summarise_all(funs(mean))
+    aem.polt_melt <- reshape2::melt(aem.plot.mean,id=('Group'))
+    
+    
+    library(ggplot2)
+    my.formula = y ~ x
+    
+    ggplot(data = aem.polt_melt,aes(x=Group, y=value)) +
+      geom_line(aes(x=Group, y=value),group = 1, method = "lm",formula = my.formula, se=FALSE,color='#161616',size=1.5) + 
+      geom_jitter(color = "#161616",size=1.5) + 
+      facet_grid(. ~ variable) + facet_wrap(~ variable, scales = "free_y",ncol = 4) +
+      theme(strip.text.x = element_text(margin = margin(0.05,0.05,0.05,0.05,"cm"))) +
+      theme_bw()+ ylab("AEM") + xlab('') +
+      theme(legend.position = "none",     
+            panel.grid=element_blank()) +
+      theme(text=element_text(size = 25)) +
+      theme(axis.text.x = element_text(size = 25, colour = 'black')) +
+      theme(axis.text.y = element_text(size = 25, colour = 'black')) +
+      theme(strip.background = element_rect(fill="#FFFFFF")) +
+      theme(strip.text.x = element_text(size = 25)) 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    # geom_line(method = "lm", se=FALSE, formula = my.formula,group=1)
+    #geom_line(data = aem.polt_melt, aes(x=Group, y=value),group = 1)
+    
+    ggsave(filename = '/Users/chenqiong/Desktop/replot/aem/si.aem.species.30.pdf', width = 15, height = 10)
+    
+    ## another AEM for DI: 479 
+data_frame = data.frame(col1 = letters[1:79],
+                        col3 = c("2016-01-01","2016-01-02","2016-01-03","2016-01-04","2016-01-05","2016-01-06","2016-01-07","2016-01-08","2016-01-09","2016-01-10","2016-01-11","2016-01-12","2016-01-13","2016-01-14","2016-01-15","2016-01-16","2016-01-17","2016-01-18","2016-01-19","2016-01-20","2016-01-21","2016-01-22","2016-01-23","2016-01-24","2016-01-25","2016-01-26","2016-01-27","2016-01-28","2016-01-29","2016-01-30",
+                                 "2013-01-01","2013-01-02","2013-01-03","2013-01-04","2013-01-05","2013-01-06","2013-01-07","2013-01-08","2013-01-09","2013-01-10","2013-01-11","2013-01-12","2013-01-13","2013-01-14","2013-01-15","2013-01-16","2013-01-17","2013-01-18","2013-01-19","2013-01-20","2013-01-21","2013-01-22","2013-01-23","2013-01-24","2013-01-25","2013-01-26","2013-01-27","2013-01-28","2013-01-29","2013-01-30",
+                                 "2011-01-01","2011-01-02","2011-01-03","2011-01-04","2011-01-05","2011-01-06","2011-01-07","2011-01-08","2011-01-09","2011-01-10","2011-01-11","2011-01-12","2011-01-13","2011-01-14","2011-01-15","2011-01-16","2011-01-17","2011-01-18","2011-01-19"
+                                 ))
+  
+                  
+
+View(data_frame)
+# converting to datetime object
+data_frame[['col3']] <- as.Date(data_frame[['col3']],
+                                format = "%Y-%m-%d")
+
+print ("Modified dataframe")
+print (data_frame)
+sapply(data_frame, class)
+
+View(data_frame)
+
+data <- data_frame[,2]
+class(data)
+View(data)
+
+weights <- weight.time(data, alpha=2, max.d=NULL)
+
+# construct the AEMs themselves
+aem.out <- aem.time(79, w=weights, moran=TRUE, plot.moran=TRUE)
+View(aem.out)
+
+# Compute the redundancy analysis (RDA) of the fauna by the matrix of AEM eigenvectors
+# modelling positive temporal correlation
+species <- read.delim("/Users/chenqiong/Desktop/replot/aem/di_genus_aem.txt", stringsAsFactors = F, header = T, row.names = 1,sep = "\t", check.names = F)
+species <- species[,-c(1:2)]
+View(species)
+
+species.hel <- decostand(species, method="hellinger")
+View(species.hel)
+
+species.hel.pos <- rda(species.hel, aem.out$aem[, aem.out$Moran$Positive])
+anova(species.hel.pos)
+RsquareAdj(species.hel.pos)
+
+species.hel.neg <- rda(species.hel, aem.out$aem[, !aem.out$Moran$Positive])
+anova(species.hel.neg)
+RsquareAdj(species.hel.neg)
+
+sel.aem <- forward.sel(species.hel, aem.out$aem, nperm=9999, alpha=0.10)
+
+
+
+sel.aem
+
+write.table(sel.aem, "/Users/chenqiong/Desktop/replot/aem/sel.aem.479.txt", 
+            sep = '\t', col.names = NA, quote = FALSE)
+sel.aem <- read.delim('/Users/chenqiong/Desktop/replot/aem/sel.aem.479.txt',row.names = 1,
+                      sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+# Three models: all AEM selected, then those modelling positive and negative correlation
+aem.select <- sort(sel.aem$order[sel.aem$pval<=0.05])
+
+aem.select
+
+aem.select.pos <- c(1,2,5,7,9,24,30,37)
+aem.select.neg <- c(58,65,71,72,73)
+
+# to see what aems look like
+plot(data[c(1,18,38,46,73,103)], aem.out$aem[c(1,18,38,46,73,103),aem.select.pos[1]], pch=19, main =
+       paste("Positive", aem.select.pos[1]), xlab="Date", ylab="AEM") 
+
+
+aem.plot <- data.frame(aem.out$aem[, c(1,50,54,11,22,4)])
+
+
+colnames(aem.plot) <- c("AEM1","AEM50","AEM54","AEM11","AEM22","AEM4")
+aem.plot$Group <- c(rep('4',30),rep('7',30),rep('9',19))
+require(dplyr)
+file = aem.plot
+aem.plot.mean <- file %>% group_by(Group) %>% summarise_all(funs(mean))
+aem.polt_melt <- reshape2::melt(aem.plot.mean,id=('Group'))
+
+
+aem.plot.ng <- data.frame(aem.out$aem[, c(58,65,71,72,73)])
+colnames(aem.plot.ng) <- c("AEM58","AEM65","AEM71","AEM72","AEM73")
+aem.plot.ng$Group <- c(rep('4',31),rep('7',31),rep('9',19))
+file = aem.plot.ng
+aem.plot.mean <- file %>% group_by(Group) %>% summarise_all(funs(mean))
+aem.plot_melt.ng <- reshape2::melt(aem.plot.mean,id=('Group'))
+
+library(ggplot2)
+my.formula = y ~ x  
+
+ggplot(data = aem.polt_melt,aes(x=Group, y=value)) +
+  geom_line(aes(x=Group, y=value),group = 1, method = "lm",formula = my.formula, se=FALSE,color='#F06342',size=1.5) + 
+  geom_jitter(color = "#161616",size=1.5) + 
+  facet_grid(. ~ variable) + facet_wrap(~ variable, scales = "free_y",ncol = 3) +
+  theme(strip.text.x = element_text(margin = margin(0.05,0.05,0.05,0.05,"cm"))) +
+  theme_bw()+ ylab("") + xlab('') +
+  theme(legend.position = "none",     
+        panel.grid=element_blank()) +
+  theme(text=element_text(size = 20)) +
+  theme(axis.text.x = element_text(size = 20, colour = 'black')) +
+  theme(axis.text.y = element_text(size = 20, colour = 'black')) +
+  theme(strip.background = element_rect(fill="#FFFFFF")) +
+  theme(strip.text.x = element_text(size = 20)) 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# geom_line(method = "lm", se=FALSE, formula = my.formula,group=1)
+#geom_line(data = aem.polt_melt, aes(x=Group, y=value),group = 1)
+
+ggsave(filename = '/Users/chenqiong/Desktop/replot/aem/aem.di.pdf', width = 10, height = 5)
+
+```
+
+## 2.10 LASSO prediction
+
+```{r restoration_age_prediction_by_taxon}
+
+library(glmnet)
+library(caret)
+df <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/car_lasso.txt',row.names = 1,
+                    sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+
+truth.frame <- data.frame(t(df))
+
+View(truth.frame)
+df1 <- data.frame(apply(truth.frame, 2, as.numeric))
+
+View(df1)
+
+rownames(df1) <- rownames(truth.frame)
+
+set.seed(1985)
+index <- createDataPartition(df1$carbon, p=.8, list=F, times = 1)
+
+View(index)
+
+train_df <- df1[index,]
+test_df <- df1[-index,]
+
+nrow(train_df)
+nrow(test_df)
+View(train_df)
+
+# Specify 10-fold cross-validation as training method
+ctrlspecs <- trainControl(method = "cv", number = 10, savePredictions = "all")
+# Create vector of potential lambda values
+lambda_vector <- 10^seq(5,-5, length=500)
+set.seed(1985)
+# Specify lasso regression model to be estimated using training data
+# and k-fold cross-validation process
+model1 <- train(carbon ~ .,
+                data=train_df,
+                preProcess=c("center","scale"),
+                method="glmnet",
+                tuneGrid=expand.grid(alpha=1, lambda=lambda_vector),
+                trControl=ctrlspecs,
+                na.action = na.omit)
+model1$bestTune
+model1$bestTune$lambda
+coef <- coef(model1$finalModel,model1$bestTune$lambda)
+coef
+coef(model1$finalModel, model1$bestTune$lambda)
+
+plot(log(model1$results$lambda),
+     model1$results$RMSE,
+     xlab="log(lambda)",
+     ylab="Root Mean-Squared Error (RMSE)",
+     xlim=c(-5,0)
+)
+
+# Best tuned lambda
+log(model1$bestTune$lambda)
+
+
+# Create function to identify RMSE for best lambda, 
+# where x = RMSE vector, y = lambda vector, &  z = optimal lambda value
+RMSE_lasso <- function(x, y, z){
+  temp <- data.frame(x, y)
+  colnames(temp) <- c("RMSE", "lambda_val")
+  rownum <- which(temp$lambda_val==z)
+  print(temp[rownum,]$RMSE)
+}
+
+
+RMSE_lasso(x=model1$results$RMSE,         # x = RMSE vector
+           y=model1$results$lambda,   # y = lambda vector
+           z=model1$bestTune$lambda)  # z = optimal lambda value
+
+
+# Create function to identify Rsquared for best lambda, 
+# where x = Rsquared vector, y = lambda vector, &  z = optimal lambda value
+Rsquared_lasso <- function(x, y, z){
+  temp <- data.frame(x, y)
+  colnames(temp) <- c("Rsquared", "lambda_val")
+  rownum <- which(temp$lambda_val==z)
+  print(temp[rownum,]$Rsquared)
+}
+
+
+
+
+# Apply newly created Rsquared_lasso function
+Rsquared_lasso(x=model1$results$Rsquared, # x = Rsquared vector
+               y=model1$results$lambda,   # y = lambda vector
+               z=model1$bestTune$lambda)  # z = optimal lambda value
+varImp(model1)
+library(ggplot2)
+ggplot(varImp(model1))
+
+result_importance <- varImp(model1)
+
+
+# ten-fold Cross-validation
+
+#inputdata , continuous dependent variable
+df1 <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/lasso/car_lasso_nodi.txt',row.names = 1,
+                  sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+
+df2 <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/lasso/car_lasso_nodi.txt',row.names = 1,
+                  sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+
+df3 <- as.data.frame(apply(df1[-1, ], 2, as.numeric))
+rownames(df3) <- rownames(df1[-1, ])
+
+data.frame <- df3
+truth.frame <- data.frame(t(df2))
+
+View(truth.frame)
+View(data.frame)
+
+performance.result.cv.time = replicate(10, cvnested(data.frame, truth.frame, 10))
+
+
+View(performance.result.cv.time)
+
+
+
+concordance_index <- function(predictions, truth) {
+  n <- length(predictions)
+  n_pairs <- 0
+  n_concordant <- 0
+  
+  for (i in 1:(n-1)) {
+    for (j in (i+1):n) {
+      if (truth[i] != truth[j]) {
+        n_pairs <- n_pairs + 1
+        if ((predictions[i] < predictions[j] && truth[i] < truth[j]) || 
+            (predictions[i] > predictions[j] && truth[i] > truth[j])) {
+          n_concordant <- n_concordant + 1
+        }
+      }
+    }
+  }
+  
+  return(n_concordant / n_pairs)
+}
+
+
+cvnested = function(data.frame, truth.frame, k){ #data.frame to train on, k is for outer fold
+  print(ncol(data.frame))
+  flds <- createFolds(1:ncol(data.frame), k = k, list = TRUE, returnTrain = FALSE)
+  mse = c() # Mean Squared Error
+  rmse = c() # Root Mean Squared Error
+  mae = c() # Mean Absolute Error
+  r_squared = c() # R-squared
+  c_index = c() # Concordance Index
+  predict.values.df = data.frame("carbon"=c())
+  truth.values = c()
+  
+  for (i in 1:length(flds)){#outer
+    test.outer = data.frame[, c(flds[[i]])]
+    truth.test.outer = truth.frame$carbon[c(flds[[i]])]
+    
+    train.outer = data.frame[, -c(flds[[i]])]
+    truth.train.outer = truth.frame$carbon[-c(flds[[i]])]
+    
+    cvglmfit = cv.glmnet(x = t(train.outer),
+                         y = (truth.train.outer),
+                         family = "gaussian")
+    s0 = cvglmfit$lambda.1se
+    
+    glmfit = glmnet(x = t(train.outer),
+                    y = (truth.train.outer),
+                    family = "gaussian")
+    
+    pred = predict(glmfit, t(test.outer),
+                   type = "response", s = s0)
+    pred.values = predict(glmfit, t(test.outer),
+                          type = "response", s = s0)
+    pred.values.df = data.frame(pred.values)
+    colnames(pred.values.df) = c("carbon")
+    predict.values.df = rbind(predict.values.df, pred.values.df)
+    
+    mse = c(mse, mean((pred - truth.test.outer)^2)) # 计算 Mean Squared Error 并将其存储在 mse 向量中
+    rmse = c(rmse, sqrt(mean((pred - truth.test.outer)^2))) # 计算 Root Mean Squared Error 并将其存储在 rmse 向量中
+    mae = c(mae, mean(abs(pred - truth.test.outer))) # 计算 Mean Absolute Error 并将其存储在 mae 向量中
+    r_squared = c(r_squared, 1 - sum((truth.test.outer - pred)^2) / sum((truth.test.outer - mean(truth.test.outer))^2)) # 计算 R-squared 并将其存储在 r_squared 向量中
+    c_index = c(c_index, concordance_index(pred, truth.test.outer)) # 计算 Concordance Index 并将其存储在 c_index 向量中
+  }#outer
+  
+  predict.values.df = predict.values.df[order(rownames(predict.values.df)),]
+  
+  cvglmfit.final = cv.glmnet(x = t(data.frame),
+                             y = (truth.frame$carbon),
+                             family = "gaussian")
+  s0.model = cvglmfit.final$lambda.1se
+  glmfit.final = glmnet(x = t(data.frame),
+                        y = (truth.frame$carbon),
+                        family = "gaussian")
+  
+  pred.all = predict(glmfit.final, t(data.frame), type = "response", s=s0.model)
+  mse.all = mean((pred.all - truth.frame$carbon)^2) # 计算整个数据集的 Mean Squared Error
+  rmse.all = sqrt(mean((pred.all - truth.frame$carbon)^2)) # 计算整个数据集的 Root Mean Squared Error
+  mae.all = mean(abs(pred.all - truth.frame$carbon)) # 计算整个数据集的 Mean Absolute Error
+  r_squared.all = 1 - sum((truth.frame$carbon - pred.all)^2) / sum((truth.frame$carbon - mean(truth.frame$carbon))^2) # 计算整个数据集的 R-squared
+  c_index.all = concordance_index(pred.all, truth.frame$carbon) # 计算整个数据集的 Concordance Index
+  
+  print(mse.all)
+  print(rmse.all)
+  print(mae.all)
+  print(r_squared.all)
+  print(c_index.all)
+  
+  # 提取模型中最重要的 Top 20 个变量
+  coefs = coef(glmfit.final, s = s0.model)
+  coefs = coefs[-1, , drop = FALSE]  # 删除截距项
+  coefs_abs = abs(coefs) # 取绝对值
+  top_var_indices = order(coefs_abs, decreasing = TRUE)[1:20] # 获取 Top 20 个变量的索引
+  top_var_names = rownames(coefs)[top_var_indices] # 获取 Top 20 个变量的名称
+  imp_vars = coefs[top_var_indices, , drop = FALSE] # 提取最重要的 Top 20 个变量
+  rownames(imp_vars) = top_var_names # 设置变量名称
+  
+  imp_vars_abs = coefs_abs[top_var_indices, , drop = FALSE] # 提取最重要的 Top 20 个变量的绝对值（重要性）
+  rownames(imp_vars_abs) = top_var_names # 设置变量名称
+  
+  cat("Top 20 Important Variables and their Coefficients:\n")
+  print(imp_vars)
+  
+  cat("Top 20 Important Variables and their Importance (Absolute Coefficients):\n")
+  print(imp_vars_abs)
+  
+  return(list(mse = mse, rmse = rmse, mae = mae, r_squared = r_squared, c_index = c_index,
+              predict.values = predict.values.df, imp_variable = as.matrix(imp_vars), imp_variable_coe = as.matrix(imp_vars_abs)))
+}
+
+performance.result.cv.time = replicate(10, cvnested(data.frame, truth.frame, 5))
+
+result <- as.data.frame(performance.result.cv.time)
+write.table(result,'/Users/chenqiong/Desktop/replot/restoration_pre/lasso_result.txt',
+            sep = '\t', col.names = NA, quote = FALSE)
+
+
+## with Categorical dependent variable
+## genus no 17-year group 
+#load data as the format showed before
+
+
+#cvnest function, p is not used for glmnet predictions
+# relabeled 11, 12, 14, 15yr as "spring", "summer", "fall","winter"
+cvnested = function(data.frame, truth.frame, k, p){ #data.frame to train on, k is for outter fold, p is for inner fold
+  print(ncol(data.frame))
+  flds <- createFolds(1:ncol(data.frame), k = k, list = TRUE, returnTrain = FALSE)
+  auc = c()
+  predict.values.df = data.frame(spring=c(), summer=c(), fall=c(), winter=c())
+  truth.values = c()
+  #print(length(flds))
+  for (i in 1:length(flds)){#outter
+    test.outter = data.frame[, c(flds[[i]])]
+    truth.test.outter = truth.frame$season[c(flds[[i]])]
+    #print(truth.test.outter)
+    #print(flds[[i]])
+    train.outter = data.frame[, -c(flds[[i]])]
+    truth.train.outter = truth.frame$season[-c(flds[[i]])]
+    fraction = table(truth.train.outter)/length(truth.train.outter)
+    weights = 1 - fraction[as.character(truth.train.outter)]
+    #print(truth.train.outter)
+    #print(dim(train.outter))
+    #cv.glmnet takes care of inner loop training
+    cvglmfit = cv.glmnet(x = t(train.outter),
+                         y = factor(truth.train.outter),
+                         family = "multinomial", weights = weights)
+    s0 = cvglmfit$lambda.1se
+    #hyper-parameter
+    #fit train dataset with given hyper-parameter
+    glmfit = glmnet(x = t(train.outter),
+                    y = factor(truth.train.outter),
+                    family = "multinomial")
+    #predict on testing dataset
+    pred = predict(glmfit, t(test.outter),
+                   type = "class", s = s0)
+    pred.values = predict(glmfit, t(test.outter),
+                          type = "response", s = s0)
+    pred.values.df = data.frame(pred.values)
+    colnames(pred.values.df) = c("spring", "summer", "fall","winter")
+    predict.values.df = rbind(predict.values.df, pred.values.df)
+    
+    truth.values=c(truth.values, truth.test.outter)
+    confusion_table = table(predicted = pred, truth = factor(truth.test.outter))
+    #print(confusion_table)
+    mROC = multiclass.roc(as.numeric(factor(truth.test.outter)), as.numeric(factor(pred[,1])))
+    #print(auc(mROC))
+    auc = c(auc, mROC$auc)
+    #test model selected by inner to the outter test set
+  }#outter
+  #print(dim(predict.values.df))
+  #print(rownames(predict.values.df))
+  #print(truth.values) #this is not necessary as the truth remains to be the truth
+  #reodering the dataframe to be consistent between resamplings.
+  predict.values.df = predict.values.df[order(rownames(predict.values.df)),]
+  
+  #fit build model on whole dataset and testing on external dataset
+  fraction = table(truth.frame$season)/length(truth.frame$season)
+  weights = 1 - fraction[as.character(truth.frame$season)]
+  cvglmfit.final = cv.glmnet(x = t(data.frame),
+                             y = factor(truth.frame$season),
+                             family = "multinomial", weights = weights)
+  s0.model = cvglmfit.final$lambda.1se
+  glmfit.final = glmnet(x = t(data.frame),
+                        y = factor(truth.frame$season),
+                        family = "multinomial")
+  #use on external dataset
+  # print(paste0("the s0 used is ", s0.model))
+  pred.all = predict(glmfit.final, t(data.frame), type = "class", s=s0.model)
+  confusion_table.all = table(predicted = factor(pred.all, levels=c("spring", "summer", "fall","winter")), truth = factor(truth.frame$season))
+  print(confusion_table.all)
+  metrics = check.model.performance(factor(pred.all, levels=c("spring", "summer", "fall","winter")),factor(truth.frame$season))
+  #print(metrics)
+  mROC.all = multiclass.roc(as.numeric(factor(truth.frame$season)), as.numeric(factor(pred.all[,1])))
+  print(mROC.all$auc)
+  return(list(auc = auc, metrics=metrics, predict.values=predict.values.df))
+}
+
+#auc.result = cvnested(campushome.master.asinh.cpm, campushome, 10,5)
+performance.result.cv = replicate(10, cvnested(data.frame, truth.frame, 10,5))
+
+View(performance.result.cv)
+
+performance.result.cv = replicate(2,cvnested(Mike_NAmerica.master.asinh.cpm, Mike_NAmerica, patient1.master.asinh.cpm, Patient1, 10,5)) 
+#saveRDS(performance.result.cv, "performance.result.rds")
+#this combination seems to make sense so far, with mAUC around 0.7 for internal CV and external datasets.
+
+result <- data.frame(auc=unlist(c(performance.result.cv[1,])))
+View(result)
+install.packages("vipor")
+install.packages("ggbeeswarm")
+library(ggbeeswarm)
+library(vipor)
+library(ggplot2)
+library(ggsci)
+library(ggpubr)
+library(reshape2)
+library(pROC)
+library(caret)
+library(glmnet)
+library(tidyverse)
+
+dev.new()
+
+q <- ggplot(data.frame(auc=unlist(c(performance.result.cv[1,]))), aes(x="glmnet", y=auc))+
+  geom_violin(width=0.5, fill="light blue",draw_quantiles = c(0.25, 0.5, 0.75))+
+  geom_quasirandom(alpha=0.6, width = 0.1 ) + ylim(c(0,1)) + 
+  annotate("text", x=1, y=0.3, label = paste0("mean mAUC = ", signif(mean(unlist(c(performance.result.cv[1,]))), 3))) +
+  annotate("text", x=1, y=0.25, label = paste0("median mAUC = ", signif(median(unlist(c(performance.result.cv[1,]))), 3))) +scale_color_npg()+ ylab("mAUC")  + theme_pubr() + theme( axis.text.x=element_blank()) + xlab("Glmnet") +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.text=element_text(size=14))
+
+View(performance.result.cv[2,])
+View(wtf)
+#plotting other metrics, by MACRO average over classes
+wtf =lapply(performance.result.cv[2,], function(x){apply(x[,-1], 2, function(x) { mean(as.numeric(x))})})
+wtf.matrix = matrix(unlist(wtf), nrow=10, byrow=TRUE, dimnames = list(c(1:10),c("Precison","Sensitivity","Accuracy", "Specificity", "F.score", "MCC")))
+wtf.melt = melt(wtf.matrix)
+
+p <- ggplot(wtf.melt, aes(x=Var2, y=value, color=Var2))  + geom_quasirandom(alpha=0.6, groupOnX=TRUE, bandwidth = 0.1, width=0.1, size=3)  + theme_pubr()    + theme(legend.title = element_blank()) + ylim(c(0,1))+ylab("Macro average value") +xlab("Performance metrics") + scale_color_npg() +
+  #+ geom_violin( draw_quantiles = c(0.25, 0.5, 0.75))
+  theme(axis.text=element_text(size=10),
+        axis.text.x = element_blank(),
+        axis.title=element_text(size=14,face="bold"), legend.text=element_text(size=14))   +theme(legend.position="top")
+
+ggplot_build(p)$data
+
+ggarrange(q, p, ncol = 2, widths=(c(2,2)))
+
+ggsave(filename = '/Users/chenqiong/Desktop/plot/lasso/genus_no17/si.mauc.performace.factor.pdf', width = 9, height = 4.52)
+
+
+
+# year as numeric mAUC=0.686 
+check.model.performance = function(predicted.class, actual.class){
+  
+  result.tbl = as.data.frame(table(as.character(predicted.class),as.character(actual.class))) 
+  colnames(result.tbl)[1:2] = c("Pred","Truth")
+  print(result.tbl)
+  control = 0  
+  ##MACRO averaging here
+  for (class in unique(result.tbl$Truth) ){
+    control = control + 1
+    print(class)
+    tp = sum(result.tbl[result.tbl$Pred==class & result.tbl$Truth==class, "Freq"])
+    tpandfp = sum(result.tbl[result.tbl$Pred == class , "Freq" ]) #TP plus FP
+    fp = tpandfp - tp
+    tpandfn = sum(result.tbl[result.tbl$Truth == class , "Freq" ]) #TP plus FN
+    fn = tpandfn - tp
+    tn = sum(result.tbl[result.tbl$Truth != class & result.tbl$Pred != class, "Freq"])
+    print(tn)
+    presi = tp/tpandfp 
+    rec = tp/tpandfn
+    accuracy = (tp + tn)/(tp+tn+fp+fn)
+    spec = tn/(tn + fp)
+    F.score = 2*presi*rec/(presi+rec)
+    MCC = ((tp*tn)-(fn*fp))/sqrt((tp+fn)*(tn+fp)*(tp+fp)*(tn+fn))
+    if (control == 1 ) metrics = tibble(class = as.character(class), 
+                                        presi = as.numeric(presi),
+                                        recall = as.numeric(rec),
+                                        accuracy = as.numeric(accuracy),
+                                        spec = as.numeric(spec),
+                                        F.score = as.numeric(F.score),
+                                        MCC = as.numeric(MCC))
+    if (control > 1 ) metrics = rbind(metrics,c(as.character(class), as.numeric(presi), as.numeric(rec), as.numeric(accuracy), as.numeric(spec), as.numeric(F.score), as.numeric(MCC)))
+  }
+  
+  return(metrics)
+}
+
+#cvnest function, p is not used for glmnet predictions
+cvnested = function(data.frame, truth.frame, k, p){ #data.frame to train on, k is for outter fold, p is for inner fold
+  print(ncol(data.frame))
+  flds <- createFolds(1:ncol(data.frame), k = k, list = TRUE, returnTrain = FALSE)
+  auc = c()
+  predict.values.df = data.frame("11"=c(), "12"=c(), "14"=c(), "15"=c(), "17"=c())
+  truth.values = c()
+  #print(length(flds))
+  for (i in 1:length(flds)){#outter
+    test.outter = data.frame[, c(flds[[i]])]
+    truth.test.outter = truth.frame$year[c(flds[[i]])]
+    #print(truth.test.outter)
+    #print(flds[[i]])
+    train.outter = data.frame[, -c(flds[[i]])] 
+    truth.train.outter = truth.frame$year[-c(flds[[i]])]
+    fraction = table(truth.train.outter)/length(truth.train.outter)
+    weights = 1 - fraction[as.character(truth.train.outter)]
+    #print(truth.train.outter)
+    #print(dim(train.outter))
+    #cv.glmnet takes care of inner loop training
+    cvglmfit = cv.glmnet(x = t(train.outter),
+                         y = (truth.train.outter),
+                         family = "gaussian", weights = weights)
+    s0 = cvglmfit$lambda.1se
+    #hyper-parameter
+    #fit train dataset with given hyper-parameter
+    glmfit = glmnet(x = t(train.outter),
+                    y = (truth.train.outter),
+                    family = "gaussian")
+    #predict on testing dataset
+    pred = predict(glmfit, t(test.outter),
+                   type = "response", s = s0)
+    pred.values = predict(glmfit, t(test.outter),
+                          type = "response", s = s0)
+    pred.values.df = data.frame(pred.values)
+    colnames(pred.values.df) = c("year")
+    predict.values.df = rbind(predict.values.df, pred.values.df)
+    
+    pred <- as.data.frame(apply(pred, 2, round))
+    
+    truth.values=c(truth.values, truth.test.outter)
+    confusion_table = table(predicted = pred[,1], truth = (truth.test.outter))
+    #print(confusion_table)
+    mROC = multiclass.roc((truth.test.outter), (pred[,1]))
+    #print(auc(mROC))
+    auc = c(auc, mROC$auc)
+    #test model selected by inner to the outter test set
+  }#outter
+  #print(dim(predict.values.df))
+  #print(rownames(predict.values.df))
+  #print(truth.values) #this is not necessary as the truth remains to be the truth
+  #reodering the dataframe to be consistent between resamplings.
+  predict.values.df = predict.values.df[order(rownames(predict.values.df)),]
+  
+  #fit build model on whole dataset and testing on external dataset
+  fraction = table(truth.frame$year)/length(truth.frame$year)
+  weights = 1 - fraction[as.character(truth.frame$year)]
+  cvglmfit.final = cv.glmnet(x = t(data.frame),
+                             y = (truth.frame$year),
+                             family = "gaussian", weights = weights)
+  s0.model = cvglmfit.final$lambda.1se
+  glmfit.final = glmnet(x = t(data.frame),
+                        y = (truth.frame$year),
+                        family = "gaussian")
+  #use on external dataset
+  # print(paste0("the s0 used is ", s0.model))
+  pred.all = predict(glmfit.final, t(data.frame), type = "response", s=s0.model)
+  
+  pred.all <- as.data.frame(apply(pred.all, 2, round))
+  confusion_table.all = table(predicted = (pred.all[,1]), truth = (truth.frame$year))
+  print(confusion_table.all)
+  metrics = check.model.performance((pred.all[,1]),(truth.frame$year))
+  #print(metrics)
+  mROC.all = multiclass.roc((truth.frame$year), (pred.all[,1]))
+  print(mROC.all$auc)
+  return(list(auc = auc, metrics=metrics, predict.values=predict.values.df))
+}
+
+#auc.result = cvnested(campushome.master.asinh.cpm, campushome, 10,5)
+performance.result.cv.time = replicate(10, cvnested(data.frame, truth.frame, 10,5))
+
+View(performance.result.cv.time)
+
+q <- ggplot(data.frame(auc=unlist(c(performance.result.cv.time[1,]))), aes(x="glmnet", y=auc))+
+  geom_violin(width=0.5, fill="light blue",draw_quantiles = c(0.25, 0.5, 0.75))+
+  geom_quasirandom(alpha=0.6, width = 0.1 ) + ylim(c(0,1)) + 
+  annotate("text", x=1, y=0.3, label = paste0("mean mAUC = ", signif(mean(unlist(c(performance.result.cv.time[1,]))), 3))) +
+  annotate("text", x=1, y=0.25, label = paste0("median mAUC = ", signif(median(unlist(c(performance.result.cv.time[1,]))), 3))) +scale_color_npg()+ ylab("mAUC")  + theme_pubr() + theme( axis.text.x=element_blank()) + xlab("Glmnet") +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"), legend.text=element_text(size=14))
+
+View(performance.result.cv.time)
+View(wtf)
+#plotting other metrics, by MACRO average over classes
+wtf =lapply(performance.result.cv.time[2,], function(x){apply(x[,-1], 2, function(x) { mean(as.numeric(x))})})
+wtf.matrix = matrix(unlist(wtf), nrow=10, byrow=TRUE, dimnames = list(c(1:10),c("Precison","Sensitivity","Accuracy", "Specificity", "F.score", "MCC")))
+wtf.melt = melt(wtf.matrix)
+
+p <- ggplot(wtf.melt, aes(x=Var2, y=value, color=Var2))  + geom_quasirandom(alpha=0.6, groupOnX=TRUE, bandwidth = 0.1, width=0.1, size=3)  + theme_pubr()    + theme(legend.title = element_blank()) + ylim(c(0,1))+ylab("Macro average value") +xlab("Performance metrics") + scale_color_npg() +
+  #+ geom_violin( draw_quantiles = c(0.25, 0.5, 0.75))
+  theme(axis.text=element_text(size=10),
+        axis.text.x = element_blank(),
+        axis.title=element_text(size=14,face="bold"), legend.text=element_text(size=14))   +theme(legend.position="top")
+
+ggplot_build(p)$data
+
+ggarrange(q, p, ncol = 2, widths=(c(2,2)))
+
+
+ggsave(filename = '/Users/chenqiong/Desktop/plot/lasso/si.mauc.performace.year.number.pdf', width = 9, height = 4.52)
+
+
+# r getting the mean prediction values
+#initiating empty tibbles with rownames.
+spring=tibble(row.names = rownames(performance.result.cv[3,1]$predict.values))
+summer=tibble(row.names = rownames(performance.result.cv[3,1]$predict.values))
+fall=tibble(row.names = rownames(performance.result.cv[3,1]$predict.values))
+winter=tibble(row.names = rownames(performance.result.cv[3,1]$predict.values))
+
+
+for (i in 1:length(performance.result.cv[3,])){
+  temp.df = as_tibble(performance.result.cv[3,i]$predict.values)
+  spring = cbind(spring, temp.df$spring)
+  summer = cbind(summer, temp.df$summer)
+  fall = cbind(fall, temp.df$fall)
+  winter = cbind(winter, temp.df$winter)
+}
+#plot mean var relationship for probabilities
+dev.new()
+pdf(file = '/Users/chenqiong/Desktop/plot/lasso/genus_no17/mean-variance-si.pdf', width=7, height=5)
+par(mfrow=c(2,2))
+plot(apply(spring[,-1], 1, mean),  apply(spring[,-1], 1, var), xlab="mean", ylab="var", main="mean-variance relationship for 11 predictions")
+plot(apply(summer[,-1], 1, mean),  apply(summer[,-1], 1, var),xlab="mean", ylab="var",main="mean-variance relationship for 12 predictions")
+plot(apply(fall[,-1], 1, mean),  apply(fall[,-1], 1, var),xlab="mean", ylab="var",main="mean-variance relationship for 14 predictions")
+plot(apply(winter[,-1], 1, mean),  apply(winter[,-1], 1, var),xlab="mean", ylab="var",main="mean-variance relationship for 15 predictions")
+dev.off()
+
+dev.new()
+pdf(file = '/Users/chenqiong/Desktop/plot/lasso/genus_no17/mean-median-si.pdf', width=7, height=5)
+
+par(mfrow=c(2,2))
+plot(apply(spring[,-1], 1, mean),  apply(spring[,-1], 1, median),xlab="mean", ylab="median",main="mean-median relationship for 11 predictions")
+plot(apply(summer[,-1], 1, mean),  apply(summer[,-1], 1, median), xlab="mean", ylab="median",main="mean-median relationship for 12 predictions")
+plot(apply(fall[,-1], 1, mean),  apply(fall[,-1], 1, median), xlab="mean", ylab="median",main="mean-median relationship for 14 predictions")
+plot(apply(winter[,-1], 1, mean),  apply(winter[,-1], 1, median), xlab="mean", ylab="median",main="mean-median relationship for 15 predictions")
+dev.off()
+
+#taking mean across the number of resamplings for each sample
+finalvalues = data.frame(spring = apply(spring[,-1], 1, mean), summer = apply(summer[,-1], 1, mean), fall = apply(fall[,-1], 1, mean), winter = apply(winter[,-1], 1, mean))
+#rename the row for the tibble
+row.names(finalvalues) = spring$row.names
+
+#generate truth vector according to the sample names
+finaltruth = truth.frame$season[match(row.names(finalvalues), rownames(truth.frame))]
+
+
+#at this point, final values store a tibble for mean prediction scores for each sample across 4 seasons, finaltruth store their respective truth values
+
+
+##formal fitting, this step prepares for further steps
+# r formal fitting
+#finding the best lambda
+
+set.seed(1230123)
+set.seed(seed = NULL)
+fraction = table(truth.frame$season)/length(truth.frame$season)
+weights = 1 - fraction[as.character(truth.frame$season)]
+
+#results = replicate(3, cv.glmnet(x = t(Mike_NAmerica.master.asinh.cpm),
+#               y = factor(Mike_NAmerica$season),
+#               family = "multinomial", weights = weights))
+set.seed(seed = NULL)
+cvglmfit.final = cv.glmnet(x = t(data.frame),
+                           y = factor(truth.frame$season),
+                           family = "multinomial", weights = c(weights))
+
+plot(cvglmfit.final)
+s0 = cvglmfit.final$lambda.1se
+print(s0) #0.1233277 for genus  0.06649715 for species  0.08242289 for genus no 17
+glmfit = glmnet(x = t(data.frame),
+                y = factor(truth.frame$season),
+                family = "multinomial",
+                intercept=FALSE)
+
+
+pred.internal.rawvalues = predict(glmfit, t(data.frame),
+                                  type = "response", s = s0) #provides original values of predictions for each category
+pred.internal = predict(glmfit, t(data.frame),
+                        type = "class", s = s0)
+pred.internal.values = predict(glmfit, t(data.frame),
+                               type = "response", s = s0)
+
+
+#internal fitting, sanity check
+confusion_table.internal = table(predicted = pred.internal, truth = factor(truth.frame$season))
+confusion_table.internal
+write.table(confusion_table.internal, '/Users/chenqiong/Desktop/plot/lasso/si_updata/confusion_table_si.txt', sep='\t', col.names = NA, quote = FALSE)
+
+confusionMatrix(data=factor(pred.internal, levels=c("spring", "summer", "fall","winter")), reference=factor(truth.frame$season), mode = "everything")
+
+mROC.internal = multiclass.roc(as.numeric(factor(truth.frame$season)), as.numeric(factor(pred.internal, levels=c("spring", "summer", "fall", "winter"))))
+
+mROC.internal$auc
+
+##multiclass auc
+
+#use bind_cols and bind_rows for tibbles
+cal_auc = function(finalvalues, finaltruth, zero_label, one_label){
+  #zero_label="spring"
+  #one_label="summer"
+  colnames(finalvalues) = c("spring", "summer", "fall", "winter")
+  final.df = bind_cols(truth=finaltruth, finalvalues)
+  points = tibble(label=character(), prob=double())
+  for (i in 1:dim(final.df)[1]){
+    if (final.df$truth[i] == zero_label | final.df$truth[i] == one_label){
+      #print(as.character(final.df$truth[i]))#
+      #print(as.double(final.df[i, zero_label]))
+      points = bind_rows(points, tibble(label = as.character(final.df$truth[i]), prob = as.numeric(final.df[i, zero_label])))
+    }
+  }
+  #print(dim(points))
+  colnames(points) = c("label", "zero_label_prob")
+  #sorted by prob values, then we get ranks
+  points = points[order(points$zero_label_prob),]
+  #print(points)
+  #class(points)
+  n0 = 0
+  n1 = 0
+  sum_ranks = 0
+  #i is rank here
+  for (i in 1:dim(points)[1]){
+    if (points$label[i] == zero_label) {
+      n0 = n0 + 1
+      sum_ranks = sum_ranks + i
+    }
+    if (points$label[i] == one_label){
+      n1 = n1 + 1
+    }
+  }
+  #print(n0)
+  #print(n1)
+  #print(sum_ranks)
+  
+  return((sum_ranks - (n0*(n0+1)/2.0)) / (n0 * n1))
+}
+
+cal_auc(finalvalues, finaltruth, "spring", "winter") 
+
+#function generating all possible combinations from a vector, store in data.frame
+combinations = function(vector){
+  combos = tibble(a=character(), b=character())
+  for (i in 1:(length(vector)-1)){
+    for (j in (i+1):length(vector)){
+      #slice = c(as.character(vector[i]), as.character(vector[j]))
+      #names(slice) = c("a", "b")
+      #print(vector[j])
+      combos = bind_rows(combos, c(a = as.character(vector[i]), b= as.character(vector[j])))
+    }
+  }
+  #print(combos)
+  return(combos)
+}
+
+seasons = c("spring","summer", "fall", "winter")
+seasons = factor(seasons, levels=c("spring", "summer", "fall", "winter"))
+
+combos = combinations(seasons)
+
+#calculating mAUC values
+#combos is the combinations between two labels
+cal_mAUC = function(finalvalues, finaltruth, combos){
+  colnames(finalvalues) = c("spring", "summer", "fall", "winter")
+  sums = 0
+  mAUC = 0
+  for (i in 1:dim(combos)[1]){
+    sums = sums + (cal_auc(finalvalues, finaltruth, combos$a[i], combos$b[i]) + cal_auc(finalvalues, finaltruth, combos$b[i], combos$a[i]))/2
+  }
+  mAUC = sums * 2 / (length(seasons) * (length(seasons)-1))
+  return(mAUC)
+}
+#this mAUC is calcualted from the pooling result of internal cv model on testing data, no external data is used
+#this is a relatively conservative measurement of the model performance on the training dataset
+cal_mAUC(finalvalues, finaltruth, combos)
+
+#internal test
+cal_mAUC(data.frame(pred.internal.values), factor(truth.frame$season), combos)
+
+##multiclass roc plotting one vs all
+
+#one vs all method
+cal_roc_ova = function(finalvalues, finaltruth, zero_label){
+  #zero_label="spring"
+  #one_label="summer"
+  colnames(finalvalues)=c("spring","summer","fall","winter")
+  final.df = bind_cols(truth=finaltruth, finalvalues)
+  points = data.frame(label=character(), prob=double())
+  for (i in 1:dim(final.df)[1]){
+    if (final.df$truth[i] == zero_label){
+      #print(as.character(final.df$truth[i]))#
+      #print(as.numeric(final.df[i, zero_label]))
+      points = rbind(points, c(label = as.character(final.df$truth[i]), prob = as.numeric(final.df[i, zero_label])))
+    } else {
+      points = rbind(points, c(0, prob = as.numeric(final.df[i, zero_label])))
+    }}
+  #print(dim(points))
+  colnames(points) = c("label", "zero_label_prob")
+  #sorted by prob values, then we get ranks
+  points = points[order(points$zero_label_prob),]
+  points$label=factor(points$label, levels =c(zero_label, 0))
+  points$zero_label_prob = as.numeric(points$zero_label_prob)
+  return(points)
+}
+
+#points.ova = cal_roc_ova(finalvalues, finaltruth, "spring")
+#ggroc(roc(points.ova$label, points.ova$zero_label_prob, auc=TRUE, ci=TRUE, levels=c(0, "spring")))
+#ggroc(roc(points.ova$label, points.ova$zero_label_prob, auc=TRUE, ci=TRUE, levels=c("spring", 0)))
+
+plots.ova=list()
+seasons = factor(seasons, levels=c("spring", "summer", "fall", "winter"))
+for (i in seasons){
+  points.ova = cal_roc_ova(finalvalues, finaltruth, i)
+  #print(ggroc(roc(points.ova$label, points.ova$zero_label_prob, auc=TRUE, ci=TRUE, levels=c(0, i))))
+  print(roc(points.ova$label, points.ova$zero_label_prob, auc=TRUE, ci=TRUE, levels=c(0, i)))
+  plots.ova[[i]] = roc(points.ova$label, points.ova$zero_label_prob, auc=TRUE, ci=TRUE, ci.type="shape", levels=c(0, i))
+}
+
+myPalette = c("#E64B35FF","#00A087FF","#4DBBD5FF","#3C5488FF", "#B19750") #  11 12 14 15 17
+plot(rep(1,5),col = myPalette, pch = 19, cex = 3)
+
+ggroc(plots.ova, linetype=7, size=1.2, alpha=0.8) + geom_abline(slope=1, intercept=1,color="light grey") + theme_bw()  +
+  scale_colour_manual(values = c('spring' = "#E64B35FF", 'summer' = "#00A087FF", 'fall' = "#4DBBD5FF", 'winter' = "#3C5488FF"), name = "Year") + 
+  annotate("text", label=paste0("AUC=",signif(plots.ova$fall$auc,3), " 95%CI: 0.549-0.829"), color="#E64B35FF", x= 0.3, y=0.20, size=5) + 
+  annotate("text", label=paste0("AUC=",signif(plots.ova$spring$auc,3), " 95%CI: 0.404-0.663"), color="#00A087FF", x= 0.3, y=0.15, size =5) +
+  annotate("text", label=paste0("AUC=",signif(plots.ova$summer$auc,3), " 95%CI: 0.699-0.884"), color="#4DBBD5FF", x= 0.3, y=0.10, size =5)+
+  annotate("text", label=paste0("AUC=",signif(plots.ova$winter$auc,3), " 95%CI: 0.453-0.716"), color="#3C5488FF", x= 0.3, y=0.05, size =5)+
+  labs( x = "Specificity (1-FPR)", y = "Sensitivity (TPR)", size =8) +
+  theme(axis.text=element_text(size=16,color = "#1F1F1F"),
+        axis.title=element_text(size=16,face="bold"), legend.text=element_text(size=14))
+
+ggsave(filename = '/Users/chenqiong/Desktop/plot/lasso/si_updata/auc-si.pdf',width = 7, height = 5)
+
+
+##multiclass roc plotting pairs
+
+
+#every pair method
+cal_roc = function(finalvalues, finaltruth, zero_label, one_label){
+  #zero_label="spring"
+  #one_label="summer"
+  final.df = bind_cols(truth=finaltruth, finalvalues)
+  points = data.frame(label=character(), prob=double())
+  for (i in 1:dim(final.df)[1]){
+    if (final.df$truth[i] == zero_label | final.df$truth[i] == one_label){
+      #print(as.character(final.df$truth[i]))#
+      #print(as.numeric(final.df[i, zero_label]))
+      points = rbind(points, c(label = as.character(final.df$truth[i]), prob = as.numeric(final.df[i, zero_label])))
+    }
+  }
+  #print(dim(points))
+  colnames(points) = c("label", "zero_label_prob")
+  #sorted by prob values, then we get ranks
+  points = points[order(points$zero_label_prob),]
+  points$label=factor(points$label, levels =c(zero_label, one_label))
+  points$zero_label_prob = as.numeric(points$zero_label_prob)
+  return(points)
+}
+
+plots=list()
+for (i in 1:dim(combos)[1]){ #combos is defined in last section
+  i=2
+  points.a = cal_roc(finalvalues, finaltruth, combos$a[i], combos$b[i]) 
+  points.b = cal_roc(finalvalues, finaltruth, combos$b[i], combos$a[i])
+  points.roc.a = roc(points.a$label, points.a$zero_label_prob, auc=TRUE, ci=TRUE)
+  points.roc.b = roc(points.b$label, points.b$zero_label_prob, auc=TRUE, ci=TRUE)
+  print(ggroc(list(plota = points.roc.a, plotb=points.roc.b))+ggtitle(paste0(combos$a[i],"-", combos$b[i])))
+}
+
+
+##feature extraction================
+# ```{r glmnet final fitting and feature extraction}
+
+#for further plotting of features
+#taxons with a arbitrary absolute value threshold
+#use names(selecttaxons$season) to gain access to the names of taxons for respective seasons
+
+
+selecttaxons = list(spring =c(), summer=c(), fall=c(), winter=c())
+
+#weights calcualted by percentage of sum of absolute coefficients(weight)
+weights = list(spring =c(), summer=c(), fall=c(), winter=c())
+
+select_taxo = function(season) {
+  se = season
+  coefs = coef(glmfit)[[se]][, which.min(abs(glmfit$lambda - s0))]
+  coefs = sort(coefs, decreasing= TRUE)
+  print(se)
+  #print(head(coefs,4))
+  #print(tail(coefs,4))
+  weights[[se]] = c(abs(coefs[coefs != 0])/sum(abs(coefs[coefs != 0]))*100)
+  selecttaxons[[se]] = c(coefs[abs(coefs) >0])
+  return(list(season=se, weights=weights, selecttaxo=selecttaxons[[se]]))
+}
+
+result_spring = select_taxo("spring")
+result_summer = select_taxo("summer")
+result_fall = select_taxo("fall")
+result_winter = select_taxo("winter")
+
+View(selected_genus)
+
+result_sp <- data.frame(result_spring[["selecttaxo"]])
+result_su <- data.frame(result_summer[["selecttaxo"]])
+result_fa <- data.frame(result_fall[["selecttaxo"]])
+result_w <- data.frame(result_winter[["selecttaxo"]])
+
+colnames(result_w) <- 'genus'
+colnames(result_fa) <- 'genus'
+colnames(result_su) <- 'genus'
+colnames(result_sp) <- 'genus'
+
+nrow(result_sp)
+
+selected_genus <- rbind(result_sp, result_su, result_fa, result_w)
+selected_genus$year <- c(rep('spring', 4),rep('summer', 8), rep('fall',4), rep('winter',5))
+
+write.table(selected_genus,'/Users/chenqiong/Desktop/plot/lasso/genus_no17/selected_genus.txt',
+            sep = '\t', col.names = NA, quote = FALSE)
+
+View(selected_genus)
+
+# spring  Frankia    Fusarium 
+# 0.08073215 -0.22063763
+#summer Actinomarinicola       Microvirga       Haliangium      Ramlibacter 
+# 0.7557702       -0.1093570       -0.1410960       -0.4494414 
+# fall Aeromonas -0.1580342
+# for winter and others , failed to select representive taxonomy
+
+nameslist = c()
+for (i in 1:5){
+  nameslist = c(nameslist, selecttaxons[[i]])
+}
+
+
+# selected genus
+selected_genus <- read.delim('/Users/chenqiong/Desktop/plot/lasso/genus_no17/selected_g_ab.txt',row.names = 1,
+                             sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+selected_genus$year <- as.factor(selected_genus$year)
+levels(selected_genus$year)
+
+kruskal.test(year ~ Labilithrix, data=selected_genus)
+games <- games_howell_test(selected_genus, Actinomarinicola ~ year)
+View(games)
+
+my_comparisons1 <- list(c("11", "12"), c("11", "14"), c("11", "15"))
+my_comparisons2 <- list(c("11", "14"), c("12", "14"), c("12", "15"))
+my_comparisons3 <- list(c("11", "14"), c("12", "14"), c("14", "15"))
+my_comparisons4 <- list(c("12", "15"))
+
+
+p1 <- ggviolin(selected_genus, x = "year", y = "Labilithrix", fill = "year",
+               palette = c("#E64B35FF","#00A087FF","#4DBBD5FF","#3C5488FF"),
+               add = "boxplot", add.params = list(width=0.1, fill = "white"),
+               legend="none",trim=TRUE, ylab="Labilithrix", xlab="",tickslab=FALSE) +
+  geom_point(size=0.5) + 
+  theme(legend.position="none") +
+  theme(axis.text.x = element_text(size = 20)) +
+  theme(axis.text.y = element_blank()) +
+  theme(axis.title.x = element_text(size = 20, colour = 'black',face="bold")) +
+  stat_compare_means(comparisons = my_comparisons1, label = "p.adj", hide.ns=TRUE,size=6) +
+  coord_flip()
+
+
+p1
+
+p2 <- ggviolin(selected_genus, x = "year", y = "Actinomarinicola", fill = "year",
+               palette = c("#E64B35FF","#00A087FF","#4DBBD5FF","#3C5488FF"),
+               add = "boxplot", add.params = list(width=0.1, fill = "white"),
+               legend="none",trim=TRUE, ylab="Actinomarinicola", xlab="",tickslab=FALSE) +
+  geom_point(size=0.5) + 
+  theme(legend.position="none") +
+  theme(axis.text.x = element_text(size = 20)) +
+  theme(axis.text.y = element_blank()) +
+  theme(axis.title.x = element_text(size = 20, colour = 'black',face="bold")) +
+  stat_compare_means(comparisons = my_comparisons1, label = "p.adj", hide.ns=TRUE,size=6) +
+  coord_flip()
+
+
+p3 <- ggviolin(selected_genus, x = "year", y = "Aeromonas", fill = "year",
+               palette = c("#E64B35FF","#00A087FF","#4DBBD5FF","#3C5488FF"),
+               add = "boxplot", add.params = list(width=0.1, fill = "white"),
+               legend="none",trim=TRUE, ylab="Aeromonas", xlab="",tickslab=FALSE) +
+  geom_point(size=0.5) + 
+  theme(legend.position="none") +
+  theme(axis.text.x = element_text(size = 20)) +
+  theme(axis.text.y = element_blank()) +
+  theme(axis.title.x = element_text(size = 20, colour = 'black',face="bold")) +
+  stat_compare_means(comparisons = my_comparisons1, label = "p.adj", hide.ns=TRUE,size=6) +
+  coord_flip()
+
+p4 <- ggviolin(selected_genus, x = "year", y = "Geomonas_Comamonadaceae", fill = "year",
+               palette = c("#E64B35FF","#00A087FF","#4DBBD5FF","#3C5488FF"),
+               add = "boxplot", add.params = list(width=0.1, fill = "white"),
+               legend="none",trim=TRUE, ylab="Geomonas_Comamonadaceae", xlab="",tickslab=FALSE) +
+  geom_point(size=0.5) + 
+  theme(legend.position="none") +
+  theme(axis.text.x = element_text(size = 20)) +
+  theme(axis.text.y = element_blank()) +
+  theme(axis.title.x = element_text(size = 20, colour = 'black',face="bold")) +
+  stat_compare_means(comparisons = my_comparisons1, label = "p.adj", hide.ns=TRUE,size=6) +
+  coord_flip()
+p4
+
+library(patchwork)
+
+p1 + p2 + p3 + p4 + plot_layout(widths = c(1,1), heights = c(1,1))  
+
+ggsave(filename = '/Users/chenqiong/Desktop/plot/lasso/si_updata/representive.taxo.pdf', width = 10, height = 6)
+
+
+
+# heatmap
+library(viridis)
+library(gplots)
+library(pheatmap)
+library(ggplot2)
+library(RColorBrewer)
+library("extrafont")
+library(grDevices)
+library(dplyr)
+
+genus_order <- read.delim('/Users/chenqiong/Desktop/plot/lasso/genus_no17/selected_genus.txt',
+                          stringsAsFactors = FALSE, check.names = FALSE,
+                          header = T, sep = "\t")
+
+selected_g <- read.delim('/Users/chenqiong/Desktop/plot/lasso/genus_no17/selected_g_ab.txt',
+                         stringsAsFactors = FALSE, check.names = FALSE,
+                         header = T, sep = "\t")
+View(selected_g_order)
+selected_g1 <- t(selected_g[-c(1:2),])
+#df1 <- df1[order(match(df2$GID, df1$GID)),]  #一个数据表df1的行，根据另一个数据表df2的行排序
+
+selected_g_order <- selected_g[order(match(selected_g$genus,genus_order$genus)), ]
+
+selected_g_order <- selected_g1[order(match(selected_g1[, 1],genus_order[,2])), ]
+selected_g_o[nrow(selected_g_o) + 1,] <- selected_g[2, ]
+
+
+write.table(selected_g_order, '/Users/chenqiong/Desktop/plot/lasso/genus_no17/heat.s.g.new.txt', 
+            sep = '\t', row.names = FALSE, quote = FALSE)
+
+selected_genus <- read.delim('/Users/chenqiong/Desktop/plot/lasso/genus_no17/heat.s.g.new.txt',
+                             stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
+                             header = T, sep = "\t")
+View(selected_genus)
+table(selected_genus['year']) #每个年份的数目
+
+annotation_col = data.frame(Group = rep(c("11","12","14","15"),c(17,20,27,30)))
+rownames(annotation_col) = rownames(selected_genus)
+
+View(annotation_col)
+newCols <- colorRampPalette(grDevices::rainbow(length(unique(annotation_col$Group))))
+mycolors <- newCols(length(unique(annotation_col$Group)))
+names(mycolors) <- unique(annotation_col$Group)
+mycolors <- list(Group = mycolors)
+
+selected_genus1 <- t(selected_genus[, -c(1:2)])
+
+selected_genus <- data.frame(apply(selected_genus, 2, as.numeric))
+
+View(selected_genus1)
+bk = unique(c(seq(-4,4, length=100)))
+
+write.table(result, '/Users/chenqiong/Desktop/plot/rda/0309_genus_try.txt', 
+            sep = '\t', row.names = FALSE, quote = FALSE)
+library(pheatmap) 
+library("RColorBrewer")
+# breaks = bk
+# "#417D9C", "white", "#C25134"
+# colorRampPalette(c("#417D9C", "white", "#C25134"))(100)
+
+col = brewer.pal(11, "RdBu")
+# used before
+# "#14A6B1", "white", "#E3AF2E"
+pheatmap(log2(selected_genus1+1), color = colorRampPalette(c("#14A6B1", "white", "#E3AF2E"))(100),
+         scale = "row",treeheight_row = 0,breaks = bk,
+         cluster_cols = F, cluster_rows = F,border_color = NA,
+         clustering_distance_rows = "euclidean",clustering_method = "complete",
+         annotation_col = annotation_col,show_colnames = F, show_rownames = T,
+         annotation_colors = mycolors,
+         cellwidth = 3, cellheight = 6, fontsize = 6,
+filename = '/Users/chenqiong/Desktop/plot/lasso/genus_no17/selected.genus-1.pdf',
+width = 8, height = 16)
+
+
+dev.off()
+
+genus_order <- read.delim('/Users/chenqiong/Desktop/plot/lasso/genus_no17/selected_genus.txt',
+                          stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,
+                          header = T, sep = "\t")
+View(genus_order)
+
+#====barplot for features
+genus_order <- read.delim('/Users/chenqiong/Desktop/plot/lasso/genus_no17/selected_genus.txt',
+                          stringsAsFactors = FALSE, check.names = FALSE,
+                          header = T, sep = "\t")
+
+genus_order$genus <- factor(genus_order$genus, levels = rev(genus_order$genus))
+levels(genus_order$genus)
+
+genus_order$year <- factor(genus_order$year, levels = unique(genus_order$year))
+levels(genus_order$year)
+
+col <- rev(c("#00A087FF","#4DBBD5FF","#E64B35FF","#3C5488FF"))
+col <- c("#E64B35FF","#00A087FF","#4DBBD5FF","#3C5488FF")
+
+ggdotchart(genus_order, x = "genus", y = "weight",
+           color = "year",                            # Color by groups
+           palette = c("#E64B35FF","#00A087FF","#4DBBD5FF","#3C5488FF"), # Custom color palette
+           sorting = "none",                # Sort value in descending order
+           add = "segments",    # Add segments from y = 0 to dots
+           add.params = list(size = 3),
+           rotate = TRUE,                                # Rotate vertically
+           group = "year",                                # Order by groups
+           dot.size = 6, # Large dot size
+           xlab="",
+           ylab="",
+           ggtheme = theme_pubr()                        # ggplot2 theme
+) + geom_hline(yintercept = 0, linetype = 2, color = 'lightgray') +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+
+ggsave(filename = '/Users/chenqiong/Desktop/plot/lasso/genus_no17/dotchart.pdf', width = 4, height = 6)             
+
+
+#parsing weights information
+selectweights = c()
+for (i in c("spring", "summer", "fall", "winter")){
+  selectweights = c(selectweights, weights[[i]][names(selecttaxons[[i]])])
+}
+weights.df = data.frame(season = ann.row$season, names = names(selectweights), weights=as.numeric(selectweights), value=as.numeric(c(rep(1, length(selectweights)))))
+
+
+#for some weird reasons ggplot will plot text x-axis in a sorting order even when not asked
+weights.df$names = factor(weights.df$names, levels = rev(weights.df$names))
+weights.plot= ggplot(weights.df, aes(x=names, y=value, label= paste0(round(weights.df$weights, 0),"%"))) + geom_text(aes(color=season)) +
+  ylab("Percentage of total absolute weight") +
+  theme_classic2() + scale_color_manual(values=rev(c("#00A087FF","#4DBBD5FF","#E64B35FF","#3C5488FF"))) +
+  theme(axis.ticks=element_blank(), axis.line =element_blank(), axis.text.x = element_blank()) +
+  coord_flip()  
+ggplot_build(weights.plot)$data
+
+genus_order$year <- factor(genus_order$year, levels = c("11","12","14","15"))
+ggplot(genus_order, aes(x=genus, y=value, label= paste0(round(relative_we, 2),"%")), group=year) + geom_text(aes(color=year)) +
+  ylab("") +
+  theme_classic2() + scale_color_manual(values=c("#E64B35FF","#00A087FF","#4DBBD5FF","#3C5488FF")) +
+  theme(axis.ticks=element_blank(), axis.line =element_blank(), axis.text.x = element_blank()) +
+  coord_flip()  
+
+ggsave(filename = '/Users/chenqiong/Desktop/plot/lasso/genus_no17/weight.pdf', width = 4, height = 5)
+```

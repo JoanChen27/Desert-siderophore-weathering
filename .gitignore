@@ -1,0 +1,30 @@
+# R
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+.Rproj.user/
+
+# R Markdown / knitr outputs
+*_cache/
+*_files/
+*.html
+*.pdf
+
+# Data (not tracked; see README)
+data/
+*.rds
+*.rda
+*.csv
+*.tsv
+*.xlsx
+!README.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*~

@@ -1,0 +1,2069 @@
+---
+title: "Desert restoration project -- Part 3: Functional and biogeochemical reprogramming"
+author: "Qiong_Chen"
+date: "2026-08-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+source("00_setup.R")
+```
+
+# 3. Functional and biogeochemical reprogramming
+
+## 3.1 KEGG pathway abundance and temporal trends
+
+```{r kegg-temporal-trends}
+# absolute abundance of KEGG
+data <- read.delim("~/Desktop/replot/plot-out/SD-SI-kegg.txt",
+                     sep = '\t', check.names = FALSE)
+metadata <- read.delim("~/Desktop/replot/plot-out/meta-data.txt",
+                   sep = '\t', check.names = FALSE)
+
+head(data)
+
+library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# 读入
+data <- read.delim("~/Desktop/replot/plot-out/SD-SI-kegg.txt",
+                   sep = "\t", check.names = FALSE)
+metadata <- read.delim("~/Desktop/replot/plot-out/meta-data.txt",
+                       sep = "\t", check.names = FALSE)
+
+# 颜色
+cat_cols <- c(
+  "Amino acid metabolism"                 = "#30426D",
+  "Cellular processes"                    = "#DEA63B",
+  "Central metabolism"                    = "#7CAE00",
+  "Cofactors & Secondary metabolism"      = "#2e7d32",
+  "Environmental information processing"  = "#DA3C34",
+  "Genetic information processing"        = "#00A9FF",
+  "Lipid & Glycan metabolism"             = "#807138",
+  "Transport & Xenobiotics"               = "#1B8A73"
+)
+
+# 年份顺序
+year_levels <- c("SD","11","12","14","15","17")
+
+meta_cols <- c("type","pathway","name")
+sample_cols <- setdiff(colnames(data), meta_cols)
+
+# 1) long table: pathway x sample
+dat_long <- data %>%
+  pivot_longer(cols = all_of(sample_cols), names_to = "seqid", values_to = "hits") %>%
+  mutate(
+    seqid = as.character(seqid),
+    hits  = suppressWarnings(as.numeric(hits))
+  ) %>%
+  left_join(metadata %>% mutate(seqid = as.character(seqid)), by = "seqid") %>%
+  filter(!is.na(group), !is.na(DNA), !is.na(total_reads), !is.na(hits)) %>%
+  mutate(
+    Year = factor(as.character(group), levels = year_levels),
+    # CPM/RPM: counts per million reads
+    cpm = (hits / total_reads) * 1e6,
+    # DNA-weighted CPM (proxy)
+    dna_w = cpm * DNA * 50,
+    # 为了画图更稳：log10( +1 )，避免 0/极小值爆炸
+    y = log10(dna_w)
+  )
+
+# 2) summary line per category (name)
+sum_name <- dat_long %>%
+  group_by(name, Year) %>%
+  summarise(y_med = median(y, na.rm = TRUE), .groups = "drop")
+
+# 3) plot
+ ggplot(dat_long, aes(x = Year, y = y)) +
+  geom_line(aes(group = pathway, color = name), alpha = 0.15, linewidth = 0.5) +
+  geom_point(aes(group = pathway, color = name), alpha = 0.50, size = 0.6) +
+  geom_line(
+    data = sum_name,
+    aes(x = Year, y = y_med, group = name, color = name),
+    linewidth = 1, alpha = 0.95
+  ) +
+  geom_point(
+    data = sum_name,
+    aes(x = Year, y = y_med, color = name),
+    size = 1
+  ) +
+  scale_color_manual(values = cat_cols, breaks = names(cat_cols), drop = FALSE) +
+  labs(
+    x = NULL,
+    y = "log10( KEGG CPM × DNA)",
+    color = "Category"
+  ) +
+  theme_bw(base_size = 16) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "right",
+    legend.title = element_text()
+  )  +
+ theme(axis.text.x = element_text(colour = 'black')) +
+   theme(axis.text.y = element_text(colour = 'black')) 
+
+ 
+ ggsave("~/Desktop/replot/plot-out/sd-si-kegg-abun.pdf",
+         width = 5, height = 4)
+
+```
+
+## 3.2 SD vs SI (11–17) KEGG
+
+```{r heatmap_bubble_plot}
+
+## SD vs SI (11–17) KEGG heatmap
+## GLM trend within SI + top pathways per class (scheme A)
+## Order within each class: NotSig -> Decreasing -> Increasing, then |beta| desc
+## Pathway label color = GLM trend
+
+library(ggplot2)
+library(ggtext)
+library(tidyverse)
+library(patchwork)
+
+# 0) read
+
+df <- read.delim("~/Desktop/replot/plot-out/SD-SI-kegg.txt",
+                 stringsAsFactors = FALSE,
+                 check.names = FALSE,   # 关键
+                 header = TRUE, sep = "\t")
+metadata <- read.delim("~/Desktop/replot/plot-out/meta-data.txt",
+                   sep = '\t', check.names = FALSE)
+
+
+meta_cols <- c("pathway","type","name")
+
+num_idx  <- which(!colnames(df) %in% meta_cols)
+num_cols <- colnames(df)[num_idx]  # 包含重复 SD/11/...
+
+new_cols <- paste0(num_cols, "__", seq_along(num_cols))
+colnames(df)[num_idx] <- new_cols
+
+col_map <- tibble(col = new_cols,
+                  Year = sub("__.*$", "", new_cols))
+
+to_num <- function(x){
+  x <- as.character(x)
+  x <- gsub("[\u00A0\u2007\u202F]", "", x)
+  x <- trimws(x)
+  x <- gsub(",", "", x)
+  x <- gsub("^<", "", x)
+  x <- gsub("[^0-9eE\\.\\+\\-]", "", x)
+  suppressWarnings(as.numeric(x))
+}
+
+year_levels <- c("SD","11","12","14","15","17")
+si_years    <- c("11","12","14","15","17")
+
+dat_long <- df %>%
+  pivot_longer(cols = all_of(new_cols), names_to = "col", values_to = "raw") %>%
+  left_join(col_map, by = "col") %>%
+  mutate(
+    value = to_num(raw),
+    Year  = factor(Year, levels = year_levels)
+  ) %>%
+  filter(!is.na(value)) %>%
+  select(pathway, type, name, Year, value)
+
+
+# 1) z-score (per pathway across ALL samples)
+
+dat_long <- dat_long %>%
+  group_by(pathway) %>%
+  mutate(
+    mu  = mean(value, na.rm = TRUE),
+    sdv = sd(value, na.rm = TRUE),
+    z   = ifelse(is.na(sdv) | sdv == 0, NA_real_, (value - mu) / sdv)
+  ) %>%
+  ungroup()
+
+# 2) GLM within SI(11–17): beta + p + BH + adjR2
+
+min_total_n <- 12
+min_years   <- 3
+
+glm_res <- dat_long %>%
+  filter(Year %in% si_years) %>%
+  mutate(Year_num = as.numeric(as.character(Year))) %>%
+  group_by(name, pathway) %>%
+  group_modify(~{
+    d <- .x %>% filter(!is.na(value), !is.na(Year_num))
+    n_eff  <- nrow(d)
+    n_year <- n_distinct(d$Year_num)
+    if (n_eff < min_total_n || n_year < min_years) {
+      return(tibble(n = n_eff, n_year = n_year, beta = NA_real_, p = NA_real_, adj_r2 = NA_real_))
+    }
+    fit <- lm(value ~ Year_num, data = d)
+    sm  <- summary(fit)
+    tibble(
+      n = n_eff,
+      n_year = n_year,
+      beta = unname(coef(fit)[["Year_num"]]),
+      p = sm$coefficients["Year_num","Pr(>|t|)"],
+      adj_r2 = sm$adj.r.squared
+    )
+  }) %>%
+  ungroup() %>%
+  mutate(
+    p_adj = ifelse(is.na(p), NA_real_, p.adjust(p, method = "BH")),
+    trend = case_when(
+      !is.na(p_adj) & p_adj < 0.05 & beta > 0 ~ "Increasing",
+      !is.na(p_adj) & p_adj < 0.05 & beta < 0 ~ "Decreasing",
+      TRUE                                    ~ "NotSig"
+    ),
+    abs_beta = abs(replace_na(beta, 0))
+  )
+
+
+# 3) 每个大类(name)只保留 top4 (按 abs(beta))
+#    同时：类内排序 NotSig -> Decreasing -> Increasing；各组内 abs(beta) desc
+
+top_n <- 4
+trend_rank <- c("NotSig" = 1, "Decreasing" = 3, "Increasing" = 2)
+
+keep_tbl <- glm_res %>%
+  group_by(name) %>%
+  arrange(desc(abs_beta), .by_group = TRUE) %>%
+  slice_head(n = top_n) %>%          # 每类 top4 abs(beta)
+  ungroup()
+
+# 重新做“最终显示顺序”
+order_tbl <- keep_tbl %>%
+  mutate(trend_rank = trend_rank[trend]) %>%
+  arrange(name, trend_rank, desc(abs_beta), pathway)
+
+path_levels <- order_tbl %>% pull(pathway)
+name_levels <- order_tbl %>% pull(name) %>% unique()
+
+
+# 4) Heatmap aggregation: median(z) per Year + Δ(17-SD)
+
+min_n_per_group <- 3
+
+agg <- dat_long %>%
+  semi_join(keep_tbl %>% select(name, pathway), by = c("name","pathway")) %>%
+  filter(Year %in% year_levels) %>%
+  group_by(name, pathway, Year) %>%
+  summarise(
+    n_eff = sum(!is.na(z)),
+    z_med = ifelse(n_eff >= min_n_per_group, median(z, na.rm = TRUE), NA_real_),
+    .groups = "drop"
+  ) %>%
+  mutate(Year = factor(Year, levels = year_levels))
+
+agg_wide <- agg %>%
+  select(name, pathway, Year, z_med) %>%
+  pivot_wider(names_from = Year, values_from = z_med)
+
+agg_delta <- agg_wide %>%
+  transmute(
+    name, pathway,
+    Year  = "Δ(17-SD)",
+    z_med = `17` - SD
+  )
+
+heat_df <- bind_rows(
+  agg,
+  agg_delta %>% mutate(Year = factor(Year, levels = c(year_levels, "Δ(17-SD)")))
+) %>%
+  mutate(
+    Year    = factor(as.character(Year), levels = c(year_levels, "Δ(17-SD)")),
+    pathway = factor(pathway, levels = path_levels),
+    name    = factor(name, levels = name_levels)
+  )
+
+
+# 5) 星号：Wilcoxon SD vs 17（加在 Δ列）
+
+min_wilcox_n_each <- 5
+
+wilcox_res <- dat_long %>%
+  semi_join(keep_tbl %>% select(name, pathway), by = c("name","pathway")) %>%
+  filter(Year %in% c("SD","17")) %>%
+  mutate(G2 = factor(Year, levels = c("SD","17"))) %>%
+  group_by(name, pathway) %>%
+  group_modify(~{
+    d <- .x %>% filter(!is.na(value))
+    n_sd <- sum(d$G2 == "SD")
+    n_17 <- sum(d$G2 == "17")
+    if (n_sd < min_wilcox_n_each || n_17 < min_wilcox_n_each) {
+      return(tibble(p = NA_real_))
+    }
+    wt <- suppressWarnings(wilcox.test(value ~ G2, data = d, exact = FALSE))
+    tibble(p = wt$p.value)
+  }) %>%
+  ungroup() %>%
+  mutate(
+    p_adj = ifelse(is.na(p), NA_real_, p.adjust(p, method = "BH")),
+    star  = ifelse(!is.na(p_adj) & p_adj < 0.05, "*", "")
+  )
+
+star_df <- wilcox_res %>%
+  filter(star == "*") %>%
+  transmute(
+    name,
+    pathway = factor(pathway, levels = path_levels),
+    Year    = factor("Δ(17-SD)", levels = levels(heat_df$Year)),
+    label   = star
+  )
+
+
+# 6) pathway 行名字颜色：按 GLM trend（沿用全文配色）
+
+col_inc <- "#E3AF2E"
+col_dec <- "#14A6B1"
+col_ns  <- "#222222"
+
+label_df <- keep_tbl %>%
+  mutate(
+    pathway = factor(pathway, levels = path_levels),
+    lab_col = case_when(
+      trend == "Increasing" ~ col_inc,
+      trend == "Decreasing" ~ col_dec,
+      TRUE                  ~ col_ns
+    ),
+    label = sprintf("<span style='color:%s'>%s</span>", lab_col, as.character(pathway))
+  ) %>%
+  arrange(pathway)
+
+label_map <- setNames(label_df$label, as.character(label_df$pathway))
+
+
+# 7) Plot A：Heatmap（不显示 strip，右侧单独 panel 放类名并左对齐）
+
+fill_pal <- colorRampPalette(c("#80cbc4", "#F3F6EC", "#ffa000"))(100)
+
+p_heat <- ggplot(heat_df, aes(x = Year, y = pathway, fill = z_med)) +
+  geom_tile() +
+  geom_text(data = star_df, aes(x = Year, y = pathway, label = label),
+            inherit.aes = FALSE, size = 4.2,  vjust = 0.5, hjust = 0.5,,color = "black") +
+  facet_grid(name ~ ., scales = "free_y", space = "free_y") +
+  scale_x_discrete(position = "top") +
+  scale_y_discrete(labels = function(x) label_map[x]) +
+  scale_fill_gradientn(
+    colours = fill_pal,
+    limits  = c(-3, 3),
+    oob     = scales::squish,
+    name    = "Median z-score"
+  ) +
+  labs(x = NULL, y = NULL) +
+  theme_classic(base_size = 12) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = ggtext::element_markdown(color = "black"),
+    axis.ticks.y = element_blank(),
+    strip.background = element_blank(),
+    strip.text.y = element_blank(),     # ✅ 主图不显示右侧类名
+    panel.spacing = unit(0.8, "lines"),
+    legend.position = "none"
+  )
+p_heat
+# 右侧类名 panel（严格左对齐）
+# 关键：用同样的 facet 顺序 (name_levels)，每个 facet 放一个 text，hjust=0
+name_panel_df <- tibble(
+  name = factor(name_levels, levels = name_levels),
+  x = 1, y = 1, lab = as.character(name_levels)
+)
+
+p_name <- ggplot(name_panel_df, aes(x = x, y = y, label = lab)) +
+  geom_text(hjust = 0,  size = 4) +
+  facet_grid(name ~ ., scales = "free_y", space = "free_y") +
+  coord_cartesian(xlim = c(1, 10), clip = "off") +
+  theme_void(base_size = 12) +
+  theme(
+    strip.text.y = element_blank(),
+    strip.background = element_blank(),
+    plot.margin = margin(t = 10, r = 10, b = 10, l = 0)
+  )
+
+# 拼起来：左热图 + 右类名
+final_plot <- p_heat + p_name + plot_layout(widths = c(8.6, 2))
+final_plot
+
+ggsave("~/Desktop/replot/plot-out/sd-si-kegg-glm-heat_top4.pdf",
+       final_plot, width = 8, height = 6)
+```
+
+## 3.3 Functional maptree
+
+```{r maptree}
+
+library(utils)
+library(devtools)
+library(igraph)
+library(tidyverse)
+library(viridis)
+library(data.tree)
+library(phyloseq)
+library(ggtree)
+library(RColorBrewer)
+library(ggraph)
+
+data_to_maptree = function(otu,tax,N){
+## 依赖包
+
+# 导入功能函数
+vegan_otu <-  function(physeq){
+  OTU <-  otu_table(physeq)
+  if(taxa_are_rows(OTU)){
+    OTU <-  t(OTU)
+  }
+  return(as(OTU,"matrix"))
+}
+vegan_tax <-  function(physeq){
+  tax <-  tax_table(physeq)
+  
+  return(as(tax,"matrix"))
+}
+ps <- phyloseq(otu_table(otu, taxa_are_rows=TRUE), 
+               tax_table(tax)
+)
+#相对丰富转换
+ps1_rela  = transform_sample_counts(ps, function(x) x / sum(x) );ps1_rela 
+# 提取otu表格
+otu_table = as.data.frame(t(vegan_otu(ps1_rela)))
+otu_table$mean = rowMeans(otu_table)
+otu_table$ID = row.names(otu_table)
+head(otu_table)
+#按照从大到小排序
+otu_table<- arrange(otu_table, desc(mean))
+subtab = head(otu_table,N)
+head(subtab)
+row.names(subtab) =subtab$ID
+subtab = subtab[,1:(dim(subtab)[2]-2)]
+subtab = as.matrix(subtab)
+
+#对phyloseq取子集
+ps_sub <- phyloseq(otu_table(subtab, taxa_are_rows=TRUE), 
+                   tax_table(tax))
+ps_sub
+# 整理tax文件
+#注意本次制作的是OTU水平的maptree, 将species level 标记为了OTU or ASV
+tax = as.data.frame(vegan_tax(ps_sub))
+#添加水平识别标示
+tax$upkingdom = paste("U_",tax$upkingdom,sep = "--")
+tax$Kingdom = paste(tax$upkingdom,"D_",tax$Kingdom,sep = "--")
+tax$Phylum = paste(tax$Kingdom,"P_",tax$Phylum,sep = "--")
+tax$Class = paste(tax$Phylum,"C_",tax$Class,sep = "--")
+tax$classlow = paste(tax$Class,"O_",tax$classlow,sep = "--")
+tax$OTU = paste("ASV",row.names(tax),sep = "--")
+# # 对不同分类水平的tax未知物种进行区分
+tax_table(ps_sub) = as.matrix(tax)
+head(tax)
+
+# 构造边文件
+#提取分组信息
+Desep_group <- as.character(colnames(tax))
+#按照form--to格式来排布数据
+edge_t = tax[c(Desep_group[1:2])]
+dim(edge_t)
+edge_t <-  dplyr::distinct(edge_t)
+dim(edge_t)
+for (i in 2:5) {
+  result = tax[c(Desep_group[i:(i+1)])]
+  colnames(result) = colnames(edge_t)
+  result <-  dplyr::distinct(result)
+  edge_t = rbind(edge_t,result)
+}
+dim(edge_t)
+colnames(edge_t) = c("from","to")
+if (length(unique(tax$Kingdom)) >1) {
+  edge_t$from = as.character(edge_t$from)
+  edge_t$to = as.character(edge_t$to)
+  buc = data.frame(from = c("king_up","king_up"),to =c("D_Archaea","D_Bacteria") )
+  row.names(buc) = c("sp_K","sp_k1")
+  deg = rbind(edge_t,buc)
+}
+deg = edge_t
+# 构造基本节点信息文件
+#构造tree用于提取分级结构
+tree <- FromDataFrameNetwork(deg)
+vertices_t  <-  data.frame(
+  name = unique(c(as.character(deg$from), as.character(deg$to)))
+)
+# Then I can easily get the level of each node, and add it to the initial data frame:
+mylevels <- data.frame( name=tree$Get('name'), level=tree$Get("level") )
+vertices_t <- vertices_t %>% 
+  left_join(., mylevels, by=c("name"="name"))
+#这里提取名称信息
+AA = rep("A",length(vertices_t$name))
+for (i in 1:length(vertices_t$name)) {
+  AA [i] = strsplit(basename(as.character(vertices_t$name)), "--")[[i]][length(strsplit(basename(as.character(vertices_t$name)), "--")[[i]])]
+}
+vertices_t$shortName<- AA
+# #设置level为3的定义为标签，其他偶读都省略掉，避免杂乱无章
+vertices_t <- vertices_t %>%
+  mutate(new_label=ifelse(level==3, shortName, NA))
+row.names(vertices_t) = vertices_t$name
+
+
+
+# 构造网络文件
+mygraph <- graph_from_data_frame( deg, vertices= vertices_t )
+
+p=ggraph(mygraph, layout = 'circlepack',sort.by = NULL, direction = "out") + 
+  geom_node_circle(aes(fill = as.factor(depth),color = as.factor(depth)),size=0.01) +
+  scale_fill_manual(values= c("#CD3774","#506DAD","#602725","#A8683A","#CC9C40","#F0962D") ) +
+  scale_color_manual(values=c("0" = NA, "1" = NA, "2" = NA, "3" = NA, "4"= NA, 
+                             "5"= NA)) +
+  #  scale_color_manual( values=c("0" = "white", "1" = "black", "2" = "black", "3" = "black", "4"="black", "5"="black", "6"="black", "7"="black","8"="black", "9"="black") ) +
+ # geom_node_text( aes(label=new_label), size=4,repel = TRUE,color='red') +
+  # geom_node_label( aes(label=new_label), size=3,repel = TRUE) +
+  theme_void() + 
+  theme( legend.position="FALSE",plot.margin = unit(rep(0,4), "cm")) +
+  coord_fixed()
+
+
+return(list(p,deg,vertices_t,ps_sub,mygraph))
+}
+
+maptree_add2_plot = function(x,fillcolor ){
+  #解析输入
+  ps_sub = mapdata[[4]]
+  vertices_t = mapdata[[3]]
+  deg = mapdata[[2]]
+  # ps_sub = ps_sub
+  #vertices_t = vertices_t
+  #deg = deg
+  fillcolor="levels"
+  # 防止合并后名称改变
+  fillcolor = paste("addtab",fillcolor,sep = "_")
+  colnames(addtab) = paste("addtab",colnames(addtab),sep = "_")
+  vegan_otu <-  function(physeq){
+    OTU <-  otu_table(physeq)
+    if(taxa_are_rows(OTU)){
+      OTU <-  t(OTU)
+    }
+    return(as(OTU,"matrix"))
+  }
+  vegan_tax <-  function(physeq){
+    tax <-  tax_table(physeq)
+    
+    return(as(tax,"matrix"))
+  }
+  
+  tax_table = as.data.frame(vegan_tax(ps_sub))
+  otu_table = as.data.frame(t(vegan_otu(ps_sub)))
+  #计算全部均值
+  otu_table$mean = rowMeans(otu_table)
+  #组合结果
+  inde = merge(otu_table,tax_table,by = "row.names", all = TRUE)
+  head(inde)
+  row.names(inde) = inde$Row.names
+  inde$Row.names = NULL
+  
+  dim(inde)
+  inde = merge(inde,addtab,by = "row.names",all.x = TRUE)
+  row.names(inde) = inde$Row.names
+  inde$Row.names = NULL
+  dim(inde)
+  #更改颜色列统一为fill_color
+  colnames(inde) <- gsub("addtab_level","fill_color",colnames(inde))
+  #添加高级注释信息进入函数
+  row.names(inde) = paste("ASV",row.names(inde),sep = "--")
+  ##将全部信息合并到节点属性中
+  data_plot = merge(vertices_t,inde,by = "row.names",all = TRUE)
+  row.names(data_plot) = data_plot$Row.names
+  data_plot$Row.names = NULL
+  head(data_plot)
+  #指定大小映射列将NA值做转换为0
+  asa =data_plot$mean
+  data_plot$mean[is.na(asa)] = 0
+  #选择是否平方根标准化丰度
+  # data_plot$mean[!is.na(asa)] = sqrt(data_plot$mean[!is.na(asa)])
+  
+  mygraph <- graph_from_data_frame( deg, vertices= data_plot )
+  # 设置颜色映射参数
+  data = create_layout(mygraph, layout = 'circlepack',weight = mean, sort.by = NULL, direction = "out")
+  colnames(data)
+  i = "fill_color" 
+  data[[i]] = as.character(data[[i]])
+  data[[i]][is.na(data[[i]])] = "NOTA"
+  unique(data[[i]])
+  data[[i]] = factor(data[[i]],levels =unique(data[[i]]) )
+  levels(data[[i]])
+  data[i] = data[[i]]
+  colbar <-length(unique(data[[i]]))
+  mi = brewer.pal(9,"Set1")
+  # mi = c( "#E41A1C", "#377EB8" ,"#4DAF4A",'#FFFFFF')
+  fil_colors = mi[1:colbar ]
+  #fil_colors = c( "#E41A1C", "#377EB8" ,"#4DAF4A",'#FFFFFF')
+ names(fil_colors ) = unique(data$fill_color)
+ fil_colors
+ # fil_colors[1]= NA
+  p = ggraph(mygraph, layout = 'circlepack',weight = mean, sort.by = NULL,direction = "out") +
+    geom_node_circle(aes(fill = factor(fill_color),color = as.factor(depth)) ,size =0.5) +
+ #  scale_fill_manual(values= fil_colors ) +
+    scale_color_manual(values=c("0" = alpha("#beaed4",1), 
+                                "1" = alpha("#e0e0e0",0.7), 
+                                "2" = alpha("#e0e0e0",1),
+                                "3" = alpha("#e0e0e0",1),
+                                "4"=alpha("#e0e0e0", 0.8),
+                                "5"=alpha("white",0.0)) )+
+    scale_fill_manual(values = c('#d50000','#00b8d4','#ff6d00','#d50000','#00b8d4','#ff6d00',
+                                 '#d50000','#00b8d4','#ff6d00','#d50000','#00b8d4','#ff6d00')) +
+   # scale_color_manual(values=c("0" = "#1f78b4", "1" =NA, "2" = NA, "3" = NA, "4"=NA, 
+    #                           "5"= NA)) +
+    # scale_color_manual(values=c("0" = "#1f78b4", "1" = "#e31a1c", "2" = "#e0e0e0", 
+    #     "3" = "#e0e0e0", "4"="#e0e0e0", "5"="#e0e0e0", "6"="#33a02c", "7"="#b2df8a", "8"="#984ea3", "9"="white") ) +
+    #geom_node_text( aes(label=new_label), size=4,repel = TRUE) +
+    geom_node_text( aes(label=new_label), size=3,repel = TRUE) +
+    theme_void() +
+    theme( legend.position="none",plot.margin = unit(rep(0,4), "cm")) +
+    coord_fixed()
+  #p
+ #  p + scale_fill_brewer(palette = "Dark2")
+   
+   
+  return(list(p,deg,data_plot,mygraph,fil_colors))
+}
+
+df = read.delim("~/Desktop/replot/metabolic/Map/recal/out/maptree_met_aero.txt",
+                sep = '\t',stringsAsFactors = FALSE,header = TRUE,row.names = 1,
+                check.names = FALSE)
+table(df$type)
+View(df)
+ko = data.frame(df[,7])
+View(ko)
+rownames(ko) = row.names(df)
+colnames(ko) = c('level')
+addtab=ko
+
+tax = data.frame(df[,2:6])
+View(tax)
+View(otu)
+View(otu_bac)
+otu = data.frame(df[,c(8:45)])
+#otu = as.data.frame(asinh(otu*1000000))
+
+otu = as.matrix(otu)
+tax = as.matrix(tax)
+
+mapdata = data_to_maptree(otu,tax,218)
+mapdata
+p1 = mapdata[[1]]
+p1
+
+mapadd2 = maptree_add2_plot(mapdata,fillcolor = "level")
+
+p3 = mapadd2[[1]]
+
+p3 + scale_fill_brewer(palette = "Dark2")
+#ggsave(filename = '~/Desktop/replot/metabolic/Map/carbon_out/maptree/calvin.pdf',width = 5,height=5)
+```
+
+## 3.4 Correlations with physicochemical properties
+
+```{r dbRDA_cycling}
+
+library(vegan)
+library(adespatial)
+library(tidyverse)
+
+func <-  read.delim('~/Desktop/replot/ecology/model_env/pathway.txt',
+                       stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
+                       sep = "\t")
+
+env <- read.delim('~/Desktop/replot/ecology/model_env/eco_stat_cgf.txt',
+                  stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
+                  sep = "\t")
+func <- func[,-c(1)]
+env <- env[,-c(1:8)]
+
+View(func_hel)
+View(env)
+
+func_hel <- decostand(func, method = 'hellinger')
+
+rda.data = func_hel
+env <- env[,-c(37:41)]
+
+
+mod0.db = capscale(rda.data ~ 1, dist = "bray", data = env) #using add = TRUE option will give different results, more variables
+mod1.db = capscale(rda.data ~., dist = "bray", data = env)
+step.res.db.all = ordiR2step(mod0.db, mod1.db, perm.max = 1000, pin = 0.05) #about 35.5% explained  
+all.select.db = env[, attributes(step.res.db.all$terms)$term.labels]
+all.select.db 
+
+#GLM
+library(MuMIn)
+library(hier.part)
+library(relaimpo)
+library(ggtern)
+library(ggalt)
+
+relaimp.df = data.frame(matrix(nrow=ncol(all.select.db)))
+
+#  relaimp.df = data.frame(matrix(ncol=1))
+# relaimp.df = data.frame(matrix(nrow=1))
+
+relaimp.rsq = c()
+relaimp.adjrsq = c()
+relaimp.p = c()
+relaimp.var.y = c()
+
+for (name in colnames(func_hel)){
+  print(name)
+  lm.fit = lm(func_hel[,name]~., data=all.select.db)
+  lm.rela = calc.relimp(lm.fit, type = c("lmg"), rela = TRUE) #this function actually has a groups option to combine variables into groups
+  relaimp.df = cbind(relaimp.df, lm.rela@lmg)
+  relaimp.var.y = c(relaimp.var.y, lm.rela@var.y)
+  lm.summary = summary(lm.fit)
+  relaimp.rsq = c(relaimp.rsq, lm.summary$r.squared)
+  relaimp.adjrsq = c(relaimp.adjrsq, lm.summary$adj.r.squared)
+  relaimp.p = c(relaimp.p, pf(lm.summary$fstatistic[1], lm.summary$fstatistic[2], lm.summary$fstatistic[3], lower.tail=F))
+}
+
+relaimp.df = relaimp.df[, -1]
+colnames(relaimp.df) = colnames(func_hel)
+relaimp.df = relaimp.df * 100
+relaimp.df.final = rbind(relaimp.df, R2 = relaimp.rsq, adjR2 = relaimp.adjrsq, p = relaimp.p, yvar = relaimp.var.y)
+relaimp.df.final = rbind(relaimp.df.final, padjust = p.adjust(relaimp.df.final["p",], method="fdr"))
+relaimp.df.fin = t.data.frame(relaimp.df.final)
+relaimp.df.fin = as.data.frame(relaimp.df.fin)
+
+write.table(relaimp.df.fin,"~/Desktop/replot/ecology/model_env/fvarpart_function.txt",
+            sep = '\t', col.names = NA, quote = FALSE)
+
+#plot
+df <- read.delim("~/Desktop/replot/ecology/model_env/fvarpart_function.txt",
+                    sep = '\t',stringsAsFactors = FALSE,header = TRUE,
+                    check.names = FALSE)
+df1 <- df[,c(1:10)]
+df$pathway <- factor(df1$pathway, levels = c("Carbon",'Nitrogen','Phosphorus','Sulfur','Methane'))
+#df1$pathway <- factor(df1$variable, levels = c('Silt','Ks','Moisture','P','C_P ratio','N_P ratio','Mn','Na','Ti'))
+
+df1 <- melt(df1, id='pathway')
+
+col=brewer.pal(n=9, name="Oranges")
+
+ggplot() +
+  geom_tile(data = df1, aes(x = pathway, y = variable, fill = value)) +
+  scale_fill_gradientn(colors = col, limit = c(0, 70)) +
+  theme(panel.grid = element_blank(), panel.background = element_rect(color = 'black'), legend.key = element_blank(), 
+        axis.text.x = element_text(color = 'black', angle = 45, hjust = 1, vjust = 1), axis.text.y = element_text(color = 'black'), axis.ticks = element_line(color = 'black')) +
+  scale_x_discrete(expand = c(0, 0)) +
+  scale_y_discrete(expand = c(0, 0)) +
+  labs(y = '', x = '', fill = 'Importance')
+
+# df <- read.delim("~/Desktop/replot/ecology/model_env/fvarpart_function.txt",
+#                  sep = '\t',stringsAsFactors = FALSE,header = TRUE,row.names = 1,
+#                  check.names = FALSE)
+# df1 <- df[,c(1:9)]
+# 
+ bk = unique(c(seq(0,70, length=9)))
+
+library(pheatmap) 
+library("RColorBrewer")
+# breaks = bk
+# "#417D9C", "white", "#C25134"
+# colorRampPalette(c("#417D9C", "white", "#C25134"))(100)
+# color = colorRampPalette(c("#215C9F", "white", "#BF493F"))(100) #171617
+
+col=brewer.pal(n=9, name="Oranges")
+
+df2 <- as.data.frame(t(df1))
+pheatmap(as.matrix(df2),color = col,
+         scale = "none",treeheight_row = 0,breaks = bk,
+         cluster_cols = F, cluster_rows = F,border_color = "NA",
+         clustering_distance_rows = "euclidean",clustering_method = "complete",
+         show_colnames = T, show_rownames = T,
+         cellwidth = 15, cellheight = 10, fontsize = 10,
+         width = 15, height = 12,
+      filename = '~/Desktop/replot/ecology/model_env/rnv_path.tiff')
+
+df <- read.delim("~/Desktop/replot/ecology/model_env/fvarpart_function.txt",
+                 sep = '\t',stringsAsFactors = FALSE,header = TRUE,
+                 check.names = FALSE)
+df$pathway <- factor(df$pathway, levels = rev(c("Carbon",'Nitrogen','Phosphorus','Sulfur','Methane')))
+
+ ggplot() +
+  geom_col(data = df, aes(x = pathway, y = adjR2*100), fill = '#52A299', width = 0.6) +
+   theme_classic(base_size = 40) +
+  theme(panel.grid = element_blank(), panel.background = element_blank(), 
+        axis.text.x = element_text(color = 'black'),
+        axis.text.y = element_text(color = 'black'), 
+        axis.line = element_line(color = 'black'),axis.ticks = element_line(color = 'black')) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 50)) +
+  labs(y = 'Explained variation (%)', x = '') 
+  
+
+
+ggsave(filename = '~/Desktop/replot/ecology/model_env/improtance.pdf', width = 7, height = 5)
+```
+
+## 3.5 Mediation analysis
+
+```{r mediation_analysis}
+ library(dplyr)
+ library(stringr)
+
+ df_meta <- read.delim('~/Desktop/replot/mediation/metadata.txt',
+                   row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+ 
+ df_g <- read.delim('~/Desktop/replot/meta/mpa_profile_genus.txt',
+                   row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+
+ ## 1) 只选 SI 样本
+ meta_si <- df_meta %>%
+   as.data.frame() %>%
+   tibble::rownames_to_column("SeqID") %>%
+   mutate(SeqID = as.character(SeqID)) %>%
+   filter(type == "SI")
+ 
+ ## 2) 从 df_g 列名提取 SeqID（下划线前数字），并只保留 SI 的列
+ # df_g 的列名类似： "109_FKDL210119808-1a"
+ col_seqid <- str_extract(colnames(df_g), "^[0-9]+")
+ names(col_seqid) <- colnames(df_g)
+ 
+ si_seqid <- meta_si$SeqID
+ keep_cols <- names(col_seqid)[col_seqid %in% si_seqid]
+ 
+ # 子集：只保留 SI 样本列
+ g_si <- df_g[, keep_cols, drop = FALSE]
+ 
+ # 重命名列：用 SeqID 作为列名，便于后面对齐
+ colnames(g_si) <- col_seqid[keep_cols]
+ 
+ ## 3) 对齐样本顺序（按 meta_si 顺序），并丢弃缺失样本
+ common_ids <- intersect(meta_si$SeqID, colnames(g_si))
+ meta_si <- meta_si %>% filter(SeqID %in% common_ids)
+ g_si <- g_si[, meta_si$SeqID, drop = FALSE]   # 按 meta 顺序排列列
+ 
+ ## 4) 只保留 Bacteria / Archaea / Fungi（从 clade 的 d__xxx 判断）
+ # df_g 的行名是 clade
+ clade <- rownames(g_si)
+ domain <- str_match(clade, "^d__([^|]+)")[,2]
+ 
+ keep_domain <- domain %in% c("Bacteria", "Archaea", "Fungi")
+ g_si <- g_si[keep_domain, , drop = FALSE]
+ clade <- rownames(g_si)
+ 
+ ## 5) 从 clade 抽取 genus（g__），并聚合到 genus 层级
+ genus <- str_match(clade, "\\|g__([^|]+)")[,2]
+ genus[is.na(genus) | genus == "" | genus == "unclassified" | genus == "Unclassified"] <- "Unclassified"
+ 
+ # 可选：去掉 Unclassified（推荐，想保留）
+ keep_genus <- genus != "Unclassified"
+ g_si2 <- g_si[keep_genus, , drop = FALSE]
+ genus2 <- genus[keep_genus]
+ 
+ # 聚合：同一 genus 多行求和
+ g_genus_counts <- rowsum(as.matrix(g_si2), group = genus2, reorder = FALSE)
+ g_genus_counts <- as.data.frame(g_genus_counts, check.names = FALSE)
+ 
+ ## 6) prevalence 过滤：在 >=10% 样本中 count>0
+ n <- ncol(g_genus_counts)
+ prev <- rowSums(g_genus_counts > 0) / n
+ g_genus_filt <- g_genus_counts[prev >= 0.10, , drop = FALSE]
+ 
+ ## 7) （可选）再加一个 abundance 过滤：总 counts 很低的 genus 去掉
+ # 例如：总counts >= 10（按数据量可调）
+# g_genus_filt <- g_genus_filt[rowSums(g_genus_filt) >= 10, , drop = FALSE]
+ 
+ ## 8) 输出两个版本：counts / relative abundance
+ g_genus_ra <- sweep(g_genus_filt, 2, colSums(g_genus_filt), FUN = "/")
+ 
+ ## 9) （可选）CLR 变换：后续做线性/中介更稳
+ # 伪计数建议用 0.5 或 1（看稀疏程度）
+ pseudocount <- 0.5
+ X <- as.matrix(g_genus_filt) + pseudocount
+ X_ra <- sweep(X, 2, colSums(X), "/")
+ clr <- function(mat) {
+   logm <- log(mat)
+   gm <- colMeans(logm)
+   sweep(logm, 2, gm, "-")
+ }
+ g_genus_clr <- as.data.frame(clr(X_ra), check.names = FALSE)
+ 
+ ## 10) 最终：meta_si + 微生物矩阵（转置成 sample x genus 更方便建模）
+ micro_counts <- as.data.frame(t(g_genus_filt), check.names = FALSE)  # samples x genus
+ micro_ra     <- as.data.frame(t(g_genus_ra),   check.names = FALSE)
+ micro_clr    <- as.data.frame(t(g_genus_clr),  check.names = FALSE)
+ 
+ # 把 SeqID 加回去
+ micro_counts <- micro_counts %>% tibble::rownames_to_column("SeqID")
+ micro_ra     <- micro_ra     %>% tibble::rownames_to_column("SeqID")
+ micro_clr    <- micro_clr    %>% tibble::rownames_to_column("SeqID")
+ 
+ # 合并 metadata（建模用）
+ dat_counts <- meta_si %>% left_join(micro_counts, by = "SeqID")
+ dat_ra     <- meta_si %>% left_join(micro_ra,     by = "SeqID")
+ dat_clr    <- meta_si %>% left_join(micro_clr,    by = "SeqID")
+ 
+ ## 11) 保存（可选）
+ # write.table(g_genus_filt, "SI_genus_counts_filt.tsv", sep="\t", quote=FALSE)
+ # write.table(dat_clr,      "SI_meta_plus_genus_CLR.tsv", sep="\t", quote=FALSE, row.names=FALSE)
+ 
+ # 过滤不随着时间变化的
+ 
+ library(dplyr)
+ library(tidyr)
+ library(purrr)
+ library(broom)
+ 
+ meta_cols  <- c("SeqID","Year","type")
+ genus_cols <- setdiff(colnames(dat_clr), meta_cols)
+ 
+ df <- dat_clr %>% mutate(YearF = factor(Year))
+ 
+ long <- df %>%
+   select(all_of(meta_cols), YearF, all_of(genus_cols)) %>%
+   pivot_longer(cols = all_of(genus_cols),
+                names_to = "genus", values_to = "clr")
+ 
+ res_aov <- long %>%
+   group_by(genus) %>%
+   summarise(
+     p = {
+       fit <- lm(clr ~ YearF)
+       aov_tab <- anova(fit)               # base R
+       aov_tab["YearF", "Pr(>F)"]          # 整体检验 YearF
+     },
+     R2 = {
+       fit <- lm(clr ~ YearF)
+       summary(fit)$r.squared
+     },
+     .groups = "drop"
+   ) %>%
+   mutate(FDR = p.adjust(p, method = "BH")) %>%
+   arrange(FDR)
+ 
+ # 过滤（根据数据量，阈值可调）
+ sig_time <- res_aov %>% filter(FDR < 0.1, R2 >= 0.05)
+ nrow(sig_time)
+ 
+ dat_clr_time <- dat_clr %>%
+   select(all_of(meta_cols), all_of(sig_time$genus))
+ 
+ ncol(dat_clr_time) # 924 genus
+ 
+ 
+ # 代谢物
+ df_m <- read.delim('~/Desktop/replot/metabo_re/2_28/meta_in_all.txt',
+                    row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+ 
+ 
+ library(dplyr)
+ library(tidyr)
+ library(stringr)
+ 
+ 
+ ## 1) 准备 genus 样本信息：只保留 SeqID + Year（来自 dat_clr_time 或 dat_clr）
+ # dat_clr_time: 筛过时间变化 genus 后的表（含 SeqID/Year/type + genus列）
+ meta_g <- dat_clr_time %>%
+   select(SeqID, Year, type) %>%
+   mutate(SeqID = as.character(SeqID))
+ 
+ ## 2) 准备 metabolite 表：确保有 SeqID/year 列
+ m0 <- df_m %>% as.data.frame()
+ 
+ # 如果 SeqID 在行名（你读入时 row.names=1），先变成列
+ m0 <- m0 %>% tibble::rownames_to_column("FID")
+ 
+ # 找到 SeqID 列名
+ stopifnot("SeqID" %in% colnames(m0))
+ m0 <- m0 %>%
+   mutate(SeqID = as.character(SeqID))
+ 
+ # 包含各文件，year 列名可能是 year 或 Year的情况
+ year_col <- if ("year" %in% colnames(m0)) "year" else if ("Year" %in% colnames(m0)) "Year" else NA
+ stopifnot(!is.na(year_col))
+ 
+ ## 3) 只保留 genus 表里存在的 SeqID，并对齐顺序
+ common_ids <- intersect(meta_g$SeqID, m0$SeqID)
+ 
+ meta_g2 <- meta_g %>% filter(SeqID %in% common_ids) %>% arrange(SeqID)
+ m1 <- m0 %>% filter(SeqID %in% common_ids) %>% arrange(SeqID)
+ 
+ # 对齐检查
+ stopifnot(all(meta_g2$SeqID == m1$SeqID))
+ 
+ ## 4) 只保留分析需要的列：SeqID + year + metabolite features
+ meta_cols_m <- c("FID", "SeqID", year_col)
+ feat_cols <- setdiff(colnames(m1), meta_cols_m)
+ 
+ # 强制转数值（防止读成字符）
+ m1[, feat_cols] <- lapply(m1[, feat_cols, drop=FALSE], function(x) as.numeric(x))
+ 
+ ## 5) 用 factor(year) 做整体差异检验：value ~ YearF
+ m1$YearF <- factor(m1[[year_col]])
+ 
+ res_m_aov <- lapply(feat_cols, function(feat) {
+   y <- m1[[feat]]
+   ok <- is.finite(y) & !is.na(y)
+   # 如果缺失太多，直接跳过
+   if (sum(ok) < 10) return(data.frame(feature=feat, p=NA, R2=NA, n=sum(ok)))
+   fit <- lm(y[ok] ~ m1$YearF[ok])
+   a <- anova(fit)
+   data.frame(
+     feature = feat,
+     p = a["m1$YearF[ok]", "Pr(>F)"],
+     R2 = summary(fit)$r.squared,
+     n = sum(ok)
+   )
+ }) %>% bind_rows() %>%
+   mutate(FDR = p.adjust(p, method="BH")) %>%
+   arrange(FDR)
+ 
+ ## 6) 过滤：同 genus 一样的逻辑（阈值可调）
+ sig_m <- res_m_aov %>% filter(!is.na(FDR), FDR < 0.5, R2 >= 0.05)
+ nrow(sig_m)
+ 
+ 
+ # 先看看 R2 分布
+ summary(res_m_aov$R2)
+ quantile(res_m_aov$R2, c(.5,.7,.8,.9,.95), na.rm=TRUE)
+ 
+ # 推荐：取 R2 >= 0.05 的 top（现在是 287 个）
+ sig_m <- res_m_aov %>% filter(!is.na(R2), R2 >= 0.05)
+ 
+ # 或者如果想更少一点：取 top 15% / 10%
+ cut <- quantile(res_m_aov$R2, 0.90, na.rm=TRUE)  # top 10%
+ sig_m <- res_m_aov %>% filter(!is.na(R2), R2 >= cut)
+ nrow(sig_m)
+ 
+ 
+ ## 7) 输出过滤后的 metabolite table（按 SeqID）
+ dat_m_time <- m1 %>%
+   select(SeqID, !!year_col, all_of(sig_m$feature)) %>%
+   rename(Year = !!year_col)
+ 
+ # 可选：保存
+ # write.table(dat_m_time, "SI_metabolite_time_filtered.tsv", sep="\t", quote=FALSE, row.names=FALSE)
+ 
+ 
+ feat_cols <- res_m_aov$feature
+ 
+ na_rate <- sapply(m1[, feat_cols, drop=FALSE], function(x) mean(!is.finite(x) | is.na(x)))
+ keep_na <- names(na_rate)[na_rate <= 0.20]   # 缺失<=20%
+ 
+ res_m_aov2 <- res_m_aov %>% filter(feature %in% keep_na)
+ 
+ cut <- quantile(res_m_aov2$R2, 0.90, na.rm=TRUE)
+ sig_m150 <- res_m_aov2 %>% filter(R2 >= cut)
+ nrow(sig_m150)
+
+ iqr <- sapply(m1[, keep_na, drop=FALSE], IQR, na.rm=TRUE)
+ keep_iqr <- names(iqr)[iqr > quantile(iqr, 0.20, na.rm=TRUE)]  # 去掉IQR最低20%
+ res_m_aov3 <- res_m_aov2 %>% filter(feature %in% keep_iqr)
+ 
+ cut <- quantile(res_m_aov3$R2, 0.80, na.rm=TRUE)
+ sig_m150 <- res_m_aov3 %>% filter(R2 >= cut)
+ nrow(sig_m150) # 240
+ 
+ 
+ dat_m_time <- m1 %>%
+   select(SeqID, !!year_col, all_of(sig_m150$feature)) %>%
+   rename(Year = !!year_col)
+ 
+ View(dat_m_time)
+
+ 
+ # 终点
+ 
+ df_e <- read.delim('~/Desktop/replot/mediation/endpoints.txt',
+                     sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
+colnames(df_e) 
+
+
+library(dplyr)
+
+# 1) 取关键列
+g <- dat_clr_time %>%
+  select(SeqID, Year, type, all_of(setdiff(colnames(dat_clr_time), c("SeqID","Year","type")))) %>%
+  mutate(SeqID = as.character(SeqID))
+
+m <- dat_m_time %>%
+  select(SeqID, Year, all_of(setdiff(colnames(dat_m_time), c("SeqID","Year")))) %>%
+  mutate(SeqID = as.character(SeqID))
+
+e <- df_e %>%
+  mutate(SeqID = as.character(SeqID)) %>%
+  select(SeqID, D50, Ks, EC, C, N, Al, As, Ba, Cu, Fe, K, Mg, Mn, Mo, Na, Ni, P, Pb, Sb, Sn, Ti, Ca, Co, Zn, Cd, Cr, S)
+
+# 2) 共同样本交集
+ids <- Reduce(intersect, list(g$SeqID, m$SeqID, e$SeqID))
+
+g2 <- g %>% filter(SeqID %in% ids) %>% arrange(SeqID)
+m2 <- m %>% filter(SeqID %in% ids) %>% arrange(SeqID)
+e2 <- e %>% filter(SeqID %in% ids) %>% arrange(SeqID)
+
+stopifnot(all(g2$SeqID == m2$SeqID), all(g2$SeqID == e2$SeqID))
+
+# 3) 合并成一个表（避免重复 Year）
+dat_all <- g2 %>%
+  left_join(m2 %>% select(-Year), by = "SeqID") %>%
+  left_join(e2, by = "SeqID")
+
+# 4) 主 endpoints / 次 endpoints 列表（后面建模用）
+Y_main <- c("Ks", "D50", "C")
+Y_elem <- c("Fe","Mn","Ca","Mg","K","Na","Ti","Al","EC")  # 可按需要调整
+
+
+# 两段式中介分析
+
+library(dplyr)
+
+meta_cols_g <- c("SeqID","Year","type")
+g <- dat_clr_time %>%
+  select(SeqID, Year, type, everything()) %>%
+  mutate(SeqID = as.character(SeqID))
+
+m <- dat_m_time %>%
+  select(SeqID, Year, everything()) %>%
+  mutate(SeqID = as.character(SeqID))
+
+ids <- intersect(g$SeqID, m$SeqID)
+g2 <- g %>% filter(SeqID %in% ids) %>% arrange(SeqID)
+m2 <- m %>% filter(SeqID %in% ids) %>% arrange(SeqID)
+stopifnot(all(g2$SeqID == m2$SeqID))
+
+YearF <- factor(g2$Year)  # 11/12/14/15/17
+
+genus_cols <- setdiff(colnames(g2), c("SeqID","Year","type"))
+met_cols   <- setdiff(colnames(m2), c("SeqID","Year"))
+
+X <- as.matrix(g2[, genus_cols, drop=FALSE])  # n × 924
+M <- as.matrix(m2[, met_cols,   drop=FALSE])  # n × 242
+
+# 可选：确保数值型
+storage.mode(X) <- "double"
+storage.mode(M) <- "double"
+
+
+fit_one_met <- function(j, M, X, YearF, met_name, genus_names) {
+  y <- M[, j]
+  ok <- is.finite(y)
+  y <- y[ok]
+  Yr <- YearF[ok]
+  Xo <- X[ok, , drop=FALSE]
+  
+  # 预先构建 Year 的设计矩阵（不含截距）
+  Z <- model.matrix(~ Yr)  # 含截距
+  # 对每个 genus 单独拟合：y ~ x + Yr
+  # 返回 beta_x, p_x, partial_R2（可选）
+  
+  out <- lapply(seq_along(genus_names), function(i) {
+    x <- Xo[, i]
+    if (all(!is.finite(x))) return(NULL)
+    
+    df <- data.frame(y=y, x=x, Yr=Yr)
+    fit <- lm(y ~ x + Yr, data=df)
+    sm <- summary(fit)
+    ct <- coef(sm)
+    if (!("x" %in% rownames(ct))) return(NULL)
+    
+    # p for x
+    p <- ct["x","Pr(>|t|)"]
+    beta <- ct["x","Estimate"]
+    
+    # partial R2 for x: (SSE_reduced - SSE_full) / SSE_reduced
+    fit0 <- lm(y ~ Yr, data=df)
+    sse0 <- sum(resid(fit0)^2)
+    sse1 <- sum(resid(fit)^2)
+    pR2 <- if (sse0 > 0) (sse0 - sse1) / sse0 else NA_real_
+    
+    data.frame(
+      metabolite = met_name,
+      genus = genus_names[i],
+      beta = beta,
+      p = p,
+      partial_R2 = pR2,
+      n = length(y)
+    )
+  })
+  
+  dplyr::bind_rows(out)
+}
+
+library(future.apply)
+
+plan(multisession)  # Mac/Win用 multisession；Linux可 multicore
+# 可选：plan(multisession, workers = 6)
+
+res_edges <- future_lapply(seq_along(met_cols), function(j) {
+  fit_one_met(
+    j = j,
+    M = M,
+    X = X,
+    YearF = YearF,
+    met_name = met_cols[j],
+    genus_names = genus_cols
+  )
+}) %>% bind_rows()
+
+
+
+res_edges <- res_edges %>%
+  mutate(FDR = p.adjust(p, method="BH")) %>%
+  arrange(FDR)
+
+# 建议的筛选（可调）
+# - FDR < 0.05 或 0.1
+# - partial_R2 >= 0.02（解释度至少2%，避免“显著但没用”）
+edges_sig <- res_edges %>%
+  filter(!is.na(FDR), FDR < 0.2, !is.na(partial_R2), partial_R2 >= 0.01)
+
+nrow(edges_sig)
+head(edges_sig, 20)
+
+# 保存
+# write.table(edges_sig, "X_to_M_edges_sig.tsv", sep="\t", quote=FALSE, row.names=FALSE)
+
+
+library(dplyr)
+
+edges2 <- res_edges %>%
+  group_by(metabolite) %>%
+  mutate(FDR_m = p.adjust(p, method="BH")) %>%
+  ungroup()
+
+edges_sig <- edges2 %>%
+  filter(FDR_m < 0.15, partial_R2 >= 0.01) %>%   # 阈值可调
+  arrange(FDR_m)
+
+nrow(edges_sig)
+head(edges_sig, 20)
+
+c(
+  edges = nrow(edges_sig),
+  n_genus = dplyr::n_distinct(edges_sig$genus),
+  n_met   = dplyr::n_distinct(edges_sig$metabolite)
+)
+
+
+edges_topk <- edges2 %>%
+  group_by(metabolite) %>%
+  slice_max(partial_R2, n = 3, with_ties = FALSE) %>%
+  ungroup()
+c(edges=nrow(edges_topk),
+  n_genus=dplyr::n_distinct(edges_topk$genus),
+  n_met=dplyr::n_distinct(edges_topk$metabolite))
+
+library(dplyr)
+library(future.apply)
+
+# endpoints
+Y_main <- c("Ks","D50","C")
+
+# dat_all：之前合并好的表（SeqID, Year, genus..., metabolite..., endpoints...）
+# YearF:
+dat_all <- dat_all %>% mutate(YearF = factor(Year))
+
+library(dplyr)
+library(future.apply)
+
+# 只跑一个 endpoint
+Y_name <- "D50"
+
+dat <- dat_all %>%
+  mutate(YearF = factor(Year)) %>%
+  select(YearF, all_of(Y_name), everything())
+
+# 预先把 Y 对 YearF 残差化（一次就够）
+y_r <- resid(lm(dat[[Y_name]] ~ dat$YearF))
+
+med_perm_one <- function(x, m, dat, y_r, P = 500) {
+  # 残差化 X 和 M（控制 YearF）
+  x_r <- resid(lm(dat[[x]] ~ dat$YearF))
+  m_r <- resid(lm(dat[[m]] ~ dat$YearF))
+  
+  # a 路径
+  fit_a <- lm(m_r ~ x_r)
+  a <- coef(fit_a)[2]
+  
+  # b 路径（控制 x_r）
+  fit_b <- lm(y_r ~ x_r + m_r)
+  b <- coef(fit_b)["m_r"]
+  
+  T_obs <- a * b
+  
+  # 置换：打乱 x_r（Freedman–Lane 风格残差置换）
+  # 保持 m_r 与 y_r 不变，破坏 x->m 与 x->y 的关联
+  T_perm <- numeric(P)
+  n <- length(x_r)
+  
+  for (i in seq_len(P)) {
+    xp <- x_r[sample.int(n, n, replace = FALSE)]
+    ap <- coef(lm(m_r ~ xp))[2]
+    bp <- coef(lm(y_r ~ xp + m_r))["m_r"]
+    T_perm[i] <- ap * bp
+  }
+  
+  p <- (1 + sum(abs(T_perm) >= abs(T_obs), na.rm = TRUE)) / (P + 1)
+  
+  data.frame(
+    x = x, m = m,
+    a = a, b = b,
+    indirect = T_obs,
+    p_ind = p
+  )
+}
+
+plan(multisession)
+
+P <- 3000  # 先用300试跑；正式可 1000（但300通常已够筛选）
+set.seed(123)
+
+edges_test <- edges_topk %>% select(genus, metabolite)
+
+res_ks <- future_lapply(seq_len(nrow(edges_test)), function(i) {
+  x <- edges_test$genus[i]
+  m <- edges_test$metabolite[i]
+  med_perm_one(x, m, dat, y_r, P = P)
+}, future.seed = TRUE) %>%
+  bind_rows()
+
+# 多重校正（Ks 单独校正）
+res_ks <- res_ks %>%
+  mutate(FDR_ind = p.adjust(p_ind, method = "BH")) %>%
+  arrange(FDR_ind)
+
+# 显著中介（阈值可调）
+sig_ks <- res_ks %>% filter(FDR_ind < 0.05)
+nrow(sig_ks)
+head(sig_ks, 20)
+
+
+# 单独运行 最后合并
+library(dplyr)
+library(future.apply)
+
+plan(multisession)
+
+future::plan(future::sequential)
+gc()
+
+
+
+set.seed(123)
+
+# 1) 改这里：endpoint 名称 
+Y_name <- "S"
+
+# 2) 改这里：置换次数（正式建议 1000
+P <- 1000
+
+# 3) 候选边（720条）
+edges_test <- edges_topk %>% select(genus, metabolite)
+
+#  4) 准备数据 + 残差化 Y（一次）
+dat <- dat_all %>%
+  mutate(YearF = factor(Year)) %>%
+  select(YearF, all_of(Y_name), everything())
+
+y_r <- resid(lm(dat[[Y_name]] ~ dat$YearF))
+
+# 5) 单条边：Freedman–Lane 残差置换检验 
+med_perm_one <- function(x, m, dat, y_r, P = 1000) {
+  x_r <- resid(lm(dat[[x]] ~ dat$YearF))
+  m_r <- resid(lm(dat[[m]] ~ dat$YearF))
+  
+  a <- coef(lm(m_r ~ x_r))[2]
+  b <- coef(lm(y_r ~ x_r + m_r))["m_r"]
+  T_obs <- a * b
+  
+  n <- length(x_r)
+  T_perm <- numeric(P)
+  
+  for (i in seq_len(P)) {
+    xp <- x_r[sample.int(n, n, replace = FALSE)]
+    ap <- coef(lm(m_r ~ xp))[2]
+    bp <- coef(lm(y_r ~ xp + m_r))["m_r"]
+    T_perm[i] <- ap * bp
+  }
+  
+  p <- (1 + sum(abs(T_perm) >= abs(T_obs), na.rm = TRUE)) / (P + 1)
+  
+  data.frame(
+    y = Y_name,
+    x = x, m = m,
+    a = a, b = b,
+    indirect = T_obs,
+    p_ind = p
+  )
+}
+
+#  6) 并行跑完所有 edges 
+plan(sequential)
+
+res_ks <- lapply(seq_len(nrow(edges_test)), function(i) {
+  x <- edges_test$genus[i]
+  m <- edges_test$metabolite[i]
+  med_perm_one(x, m, dat, y_r, P = P)
+}) %>% bind_rows()
+
+
+ #  7) 单独对 Ks 做 BH 校正 
+res_ks <- res_ks %>%
+  mutate(FDR_ind = p.adjust(p_ind, method = "BH")) %>%
+  arrange(FDR_ind)
+
+# 可选 Top10%（按FDR）先筛
+k <- ceiling(nrow(res_ks) * 0.10)
+top10_ks <- res_ks %>% slice_head(n = k)
+
+# nrow(res_ks)
+# nrow(top10_ks)
+
+#  8) 保存（改文件名即可）
+write.table(res_ks, "~/Desktop/replot/mediation/med_perm_S_P1000.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+write.table(top10_ks, "~/Desktop/replot/mediation/med_perm_S_top10pct.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+
+# quick check
+cat("Ks significant (FDR<0.05):", sum(res_ks$FDR_ind < 0.05), "\n")
+
+
+#可视化
+library(dplyr)
+
+#  mediation 文件夹
+setwd("~/Desktop/replot/mediation")  
+
+files <- list.files(pattern="^med_perm_.*_top10pct\\.tsv$")
+
+all_top <- bind_rows(lapply(files, function(f) {
+  df <- read.delim(f, sep="\t", stringsAsFactors=FALSE, check.names=FALSE)
+  # 如果里面已经有 y 列就不用解析文件名；没有就从文件名提取
+  if (!("y" %in% colnames(df))) {
+    yname <- sub("^med_perm_(.*)_top10pct\\.tsv$", "\\1", f)
+    df$y <- yname
+  }
+  df
+}))
+
+# 再做一次“每个 endpoint 只留 top N”，避免总览太乱
+N <- 30
+all_topN <- all_top %>%
+  arrange(FDR_ind, desc(abs(indirect))) %>%
+  group_by(y) %>%
+  slice_head(n = min(N, n())) %>%
+  ungroup()
+
+# 看看汇总规模
+all_top %>% count(y) %>% arrange(desc(n))
+
+write.table(all_top, '~/Desktop/replot/mediation/all_top_mediation.txt',sep="\t", quote = FALSE)
+
+library(dplyr)
+
+# 选择每个 endpoint 最强的 N 条边（先按FDR，再按|indirect|）
+N <- 30
+all_topN <- all_top %>%
+  arrange(FDR_ind, desc(abs(indirect))) %>%
+  group_by(y) %>%
+  slice_head(n = min(N, n())) %>%
+  ungroup()
+
+# 简单检查
+all_topN %>% count(y) %>% arrange(desc(n))
+library(ggplot2)
+library(ggalluvial)
+
+all_top10pct2 <- all_top %>%
+  arrange(y, FDR_ind, desc(abs(indirect))) %>%
+  group_by(y) %>%
+  mutate(rk = row_number(),
+         k = ceiling(n() * 0.10)) %>%
+  ungroup() %>%
+  filter(rk <= k) %>%
+  select(-rk, -k)
+
+
+plot_dat <- all_top10pct2 %>%
+  transmute(
+    Genus = x,
+    Metabolite = m,
+    Endpoint = y,
+    weight = abs(indirect),           # 流量
+    sign = ifelse(indirect >= 0, "positive", "negative")
+  )
+
+endpoint_order <- c("D50","Ks","C","N","EC",
+                    "Fe","Al","Ca","Mg","K","Na","Ti",
+                    "Mn","Mo","Zn","Cu","Co","Cr","Ni","Cd","Pb",
+                    "Ba","As","Sb","Sn","P","S")
+
+plot_dat$Endpoint <- factor(plot_dat$Endpoint, levels = endpoint_order)
+
+library(ggplot2)
+library(ggalluvial)
+install.packages('ggalluvial')
+
+p <- ggplot(plot_dat,
+            aes(axis1 = Genus, axis2 = Metabolite, axis3 = Endpoint,
+                y = weight)) +
+  scale_x_discrete(limits = c("Genus", "Metabolite", "Endpoint"),
+                   expand = c(.02, .02)) +
+  geom_alluvium(aes(fill = Endpoint), alpha = 0.55, width = 1/12) +
+  geom_stratum(width = 1/10, fill = "grey90", color = "grey40") +
+  geom_text(stat = "stratum",
+            aes(label = after_stat(stratum)),
+            size = 2.6) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid = element_blank(),
+    axis.title = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank()
+  ) +
+  guides(fill = guide_legend(title = "Endpoint"))
+
+p
+
+#overview可视化
+
+library(dplyr)
+library(ggplot2)
+library(ggalluvial)
+library(ggnewscale)
+
+#  0) load 
+df <- read.delim(
+  "~/Desktop/replot/mediation/all_top_mediation.txt",
+  sep = "\t", header = TRUE,
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+
+# fix empty/duplicate colnames
+bad <- which(is.na(names(df)) | names(df) == "")
+if (length(bad) > 0) names(df)[bad] <- paste0("XEMPTY_", seq_along(bad))
+names(df) <- make.unique(names(df))
+
+#  1) keep Top N edges per endpoint 
+N <- 30
+df_small <- df %>%
+  group_by(y) %>%
+  slice_max(order_by = abs(indirect), n = N, with_ties = FALSE) %>%
+  ungroup()
+
+#  2) collapse low-frequency phylum (<10) to Others 
+phy_cnt <- df_small %>% count(x_phylum, name = "n_phy")
+low_phy <- phy_cnt %>% filter(n_phy < 10) %>% pull(x_phylum)
+
+#  2b) collapse low-frequency superclass (<10) to Others 
+super_cnt <- df_small %>% count(m_superclass, name = "n_super")
+low_super <- super_cnt %>% filter(n_super < 10) %>% pull(m_superclass)
+
+
+df2 <- df_small %>%
+  mutate(
+    Domain     = x_domain,
+    Phylum     = ifelse(x_phylum %in% low_phy, "Other phyla", x_phylum),
+    Superclass = ifelse(m_superclass %in% low_super, "Other superclasses", m_superclass),
+    Endpoint   = y,
+    w_raw      = abs(indirect)
+  )
+
+plot_dat <- df2 %>%
+  group_by(Domain, Phylum, Superclass, Endpoint) %>%
+  summarise(w = sum(w_raw, na.rm = TRUE), .groups = "drop") %>%
+  filter(is.finite(w), w > 0) %>%
+  mutate(w = sqrt(w))
+
+# 3) endpoint grouping (4 classes) 
+grp_physical <- c("D50","Ks")
+grp_nutrient <- c("C","N","P","S")
+grp_ion_salt <- c("EC","Na","K","Ca","Mg")
+
+plot_dat <- plot_dat %>%
+  mutate(
+    Endpoint_chr  = as.character(Endpoint),
+    EndpointGroup = case_when(
+      Endpoint_chr %in% grp_physical ~ "Physical",
+      Endpoint_chr %in% grp_nutrient ~ "Nutrients",
+      Endpoint_chr %in% grp_ion_salt ~ "Ions/Salinity",
+      TRUE                           ~ "Rock-derived metals"
+    )
+  )
+
+endpoint_group_cols <- c(
+  "Physical"            = "#8DA0CB",
+  "Nutrients"           = "#66C2A5",
+  "Ions/Salinity"       = "#FC8D62",
+  "Rock-derived metals" = "#CAB2D6"
+)
+
+# 4) factor orders 
+domain_order <- c("Bacteria","Archaea","Eukaryota")
+plot_dat$Domain <- factor(plot_dat$Domain, levels = domain_order[domain_order %in% unique(plot_dat$Domain)])
+
+phylum_levels <- unique(as.character(plot_dat$Phylum))
+phylum_levels <- c(setdiff(phylum_levels, "Others"), "Others")
+plot_dat$Phylum <- factor(plot_dat$Phylum, levels = phylum_levels)
+
+superclass_order <- c(
+  "Organoheterocyclic compounds",
+  "Lipids and lipid-like molecules",
+  "Benzenoids",
+  "Phenylpropanoids and polyketides",
+  "Organic acids and derivatives",
+  "Organic nitrogen compounds",
+  "Organic oxygen compounds",
+  "Alkaloids and derivatives",
+  "Nucleosides, nucleotides, and analogues",
+  "Lignans, neolignans and related compounds",
+  "Unclassified",
+  "Other superclasses"
+)
+
+superclass_order <- superclass_order[superclass_order %in% unique(plot_dat$Superclass)]
+superclass_order <- c(superclass_order, setdiff(unique(plot_dat$Superclass), superclass_order))
+plot_dat$Superclass <- factor(plot_dat$Superclass, levels = superclass_order)
+
+endpoint_order <- c(
+  "D50","Ks","C","N","P","S","EC","Na","K","Ca","Mg",
+  "Fe","Mn","Al","Ti","Zn","Cu","Ni","Co","Cr","Mo","Cd","Pb","As","Sb","Sn","Ba"
+)
+endpoint_order <- endpoint_order[endpoint_order %in% unique(plot_dat$Endpoint)]
+endpoint_order <- c(endpoint_order, setdiff(unique(plot_dat$Endpoint), endpoint_order))
+plot_dat$Endpoint <- factor(plot_dat$Endpoint, levels = endpoint_order)
+
+#  5) colors 
+domain_cols <- c(Bacteria="#B8B2D9", Archaea="#8FB3DD", Eukaryota="#C7C7C7")
+domain_cols <- c(Archaea="#B8B2D9", Bacteria="#8FB3DD", Eukaryota="#C7C7C7")
+
+domain_cols <- domain_cols[names(domain_cols) %in% levels(plot_dat$Domain)]
+
+# super_cols <- c(
+#   "Organoheterocyclic compounds"="#f4a3a3",
+#   "Lipids and lipid-like molecules"="#d9c27a",
+#   "Benzenoids"="#7bd389",
+#   "Phenylpropanoids and polyketides"="#b39ddb",
+#   "Organic acids and derivatives"="#79d2e6",
+#   "Organic nitrogen compounds"="#5ec962",
+#   "Organic oxygen compounds"="#fdae61",
+#   "Alkaloids and derivatives"="#8c6bb1",
+#   "Nucleosides, nucleotides, and analogues"="#80cdc1",
+#   "Lignans, neolignans and related compounds"="#a6bddb",
+#   "Unclassified"="#f781bf"
+# )
+
+super_cols <- c(
+  "Organoheterocyclic compounds"="#F3B670",
+  "Lipids and lipid-like molecules"="#CCBCD9",
+  "Benzenoids"="#8EC585",
+  "Phenylpropanoids and polyketides"="#F9F1D6",
+  "Organic acids and derivatives"="#B1D0E3",
+  "Organic nitrogen compounds"="#DEE4D2",
+  "Organic oxygen compounds"="#ECDDE4",
+  "Alkaloids and derivatives"="#8c6bb1",
+  "Nucleosides, nucleotides, and analogues"="#80cdc1",
+  "Lignans, neolignans and related compounds"="#a6bddb",
+  "Unclassified"="#BDBDBD"
+)
+
+
+super_cols <- c(
+  "Organoheterocyclic compounds"="#F3B670",
+  "Lipids and lipid-like molecules"="#CCBCD9",
+  "Benzenoids"="#8EC585",
+  "Phenylpropanoids and polyketides"="#F9F1D6",
+  "Organic acids and derivatives"="#B1D0E3",
+  "Organic nitrogen compounds"="#DEE4D2",
+  "Organic oxygen compounds"="#ECDDE4",
+  "Alkaloids and derivatives"="#8c6bb1",
+  "Nucleosides, nucleotides, and analogues"="#80cdc1",
+  "Lignans, neolignans and related compounds"="#a6bddb",
+  "Unclassified"="#f8bbd0",
+  "Other superclasses"="#E0E0E0"
+)
+super_cols <- super_cols[names(super_cols) %in% levels(plot_dat$Superclass)]
+miss_super <- setdiff(levels(plot_dat$Superclass), names(super_cols))
+if (length(miss_super) > 0) super_cols <- c(super_cols, setNames(rep("#cccccc", length(miss_super)), miss_super))
+
+phylum_base <- setNames(rep("#f0f0f0", length(levels(plot_dat$Phylum))), levels(plot_dat$Phylum))
+phylum_base["Other phylum"] <- "#e0e0e0"
+# phylum_key_cols <- c(
+#   "Actinobacteria"  = "#8DD3C7",
+#   "Proteobacteria"  = "#FB8072",
+#   "Cyanobacteria"   = "#80B1D3",
+#   "Bacteroidetes"   = "#B3DE69",
+#   "Firmicutes"      = "#FDB462",
+#   "Planctomycetes"  = "#BC80BD",
+#   "Chloroflexi"     = "#CCEBC5",
+#   "Verrucomicrobia" = "#FFED6F"
+# )
+
+phylum_key_cols <- c(
+  "Actinobacteria"  = "#8AC2B3",
+  "Proteobacteria"  = "#FB8072",
+  "Cyanobacteria"   = "#80B1D3",
+  "Bacteroidetes"   = "#FDEE74",
+  "Firmicutes"      = "#AFACCF",
+  "Planctomycetes"  = "#C5E2B6",
+  "Chloroflexi"     = "#979B3C",
+  "Verrucomicrobia" = "#848CC5",
+  "Other phyla" = "#bdbdbd"
+)
+
+phylum_key_cols <- phylum_key_cols[names(phylum_key_cols) %in% levels(plot_dat$Phylum)]
+phylum_cols <- phylum_base
+phylum_cols[names(phylum_key_cols)] <- phylum_key_cols
+
+# endpoint nodes (用于最后一列分组上色 + 标签)
+endpoint_nodes <- plot_dat %>%
+  group_by(Endpoint, EndpointGroup) %>%
+  summarise(w = sum(w), .groups = "drop")
+
+#  6) plot 
+
+# 先算：哪些 endpoint 值太小就不标注
+# 阈值：占 endpoint 总量的比例（比如 3%），可以调大/调小
+endpoint_label_min_prop <- 0.02
+
+endpoint_nodes2 <- endpoint_nodes %>%
+  group_by() %>%
+  mutate(
+    prop = w / sum(w),
+    label = ifelse(prop >= endpoint_label_min_prop, as.character(Endpoint), "")
+  )
+
+ggplot(
+  plot_dat,
+  aes(axis1 = Domain, axis2 = Phylum, axis3 = Superclass, axis4 = Endpoint, y = w)
+) +
+  scale_x_discrete(
+    limits = c("Domain","Phylum","Superclass","Endpoint"),
+    expand = c(0.18, 0.18)
+  ) +
+  
+  # flows colored by Superclass
+  geom_alluvium(aes(fill = Superclass), alpha = 0.45, width = 1/28, knot.pos = 0.35) +
+  scale_fill_manual(values = super_cols, name = "Metabolite superclass") +
+  
+  # Domain stratum 
+ggnewscale::new_scale_fill() +
+  geom_stratum(aes(x = 1, stratum = Domain, fill = after_stat(stratum)),
+               width = 1/10, color = "white", size = 0.4) +
+  scale_fill_manual(values = domain_cols, guide = "none") +
+  
+  #  Phylum stratum 
+ggnewscale::new_scale_fill() +
+  geom_stratum(aes(x = 2, stratum = Phylum, fill = after_stat(stratum)),
+               width = 1/10, color = "white", size = 0.4) +
+  scale_fill_manual(values = phylum_cols, guide = "none") +
+  
+  #  Superclass stratum 
+ggnewscale::new_scale_fill() +
+  geom_stratum(aes(x = 3, stratum = Superclass, fill = after_stat(stratum)),
+               width = 1/10, color = "white", size = 0.4) +
+  scale_fill_manual(values = super_cols, guide = "none") +
+  
+  #  labels for col 1~3 (WHITE) 
+geom_text(
+  stat = "stratum",
+  aes(label = ifelse(after_stat(x) < 4, as.character(after_stat(stratum)), "")),
+  size = 3.2, color ="black"
+) +
+  
+  # Endpoint stratum (group colors) 
+ggnewscale::new_scale_fill() +
+  geom_stratum(
+    data = endpoint_nodes,
+    aes(x = 4, stratum = Endpoint, y = w, fill = EndpointGroup),
+    width = 1/10, color = "white", size = 0.4,
+    inherit.aes = FALSE
+  ) +
+  scale_fill_manual(values = endpoint_group_cols, name = "Endpoint group") +
+  
+  #  Endpoint labels (BLACK, only large ones; right next to bar) 
+geom_text(
+  data = endpoint_nodes2,
+  aes(x = 4, stratum = Endpoint, y = w, label = label),
+  stat = "stratum",
+  inherit.aes = FALSE,
+  size = 3.2, color = "black",
+  hjust = 0, nudge_x = 0.05
+) +
+  
+  coord_cartesian(clip = "off") +
+  theme_void(base_size = 14) +
+  theme(
+    legend.position = "none",
+    plot.margin = margin(10, 80, 10, 20)
+  )
+
+
+# list endpoints that were NOT labeled (top -> bottom order on plot) 
+hidden_endpoints <- endpoint_nodes2 %>%
+  mutate(Endpoint = factor(Endpoint, levels = levels(plot_dat$Endpoint))) %>%
+  filter(label == "" | is.na(label)) %>%
+  arrange(Endpoint) %>%
+  pull(Endpoint) %>%
+  as.character()
+
+cat("\nHidden endpoints (top -> bottom):\n")
+print(hidden_endpoints)
+
+endpoint_list <- endpoint_nodes2 %>%
+  mutate(Endpoint = factor(Endpoint, levels = levels(plot_dat$Endpoint))) %>%
+  arrange(Endpoint) %>%
+  transmute(
+    Endpoint = as.character(Endpoint),
+    prop = prop,
+    shown = label != ""
+  )
+
+cat("\nAll endpoints (top -> bottom):\n")
+print(endpoint_list)
+
+
+ggsave(filename = '~/Desktop/replot/mediation/mediation.pdf',width = 10, height = 5)
+
+
+# 只展示figure 1中变化的endpoints
+# D50,Ks,C, N, EC, K, Ca, Mg, Fe, Ti, Zn, Ni,Co, Cr, Cd, Ba
+
+library(dplyr)
+library(ggplot2)
+library(ggalluvial)
+library(ggnewscale)
+
+# 0) load 
+df <- read.delim(
+  "~/Desktop/replot/mediation/all_top_mediation.txt",
+  sep = "\t", header = TRUE,
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+
+# fix empty/duplicate colnames
+bad <- which(is.na(names(df)) | names(df) == "")
+if (length(bad) > 0) names(df)[bad] <- paste0("XEMPTY_", seq_along(bad))
+names(df) <- make.unique(names(df))
+
+#  0b) keep only selected endpoints 
+keep_y <- c("D50","Ks","C","N","EC","K","Ca","Mg","Fe","Ti","Zn","Ni","Co","Cr","Cd","Ba")
+df <- df %>% filter(y %in% keep_y)
+
+# 1) keep Top N edges per endpoint 
+N <- 30
+df_small <- df %>%
+  group_by(y) %>%
+  slice_max(order_by = abs(indirect), n = N, with_ties = FALSE) %>%
+  ungroup()
+
+#  2) collapse low-frequency phylum (<10) to "Other phyla" 
+phy_cnt <- df_small %>% count(x_phylum, name = "n_phy")
+low_phy <- phy_cnt %>% filter(n_phy < 10) %>% pull(x_phylum)
+
+#  2b) collapse low-frequency superclass (<10) to "Other superclasses" 
+super_cnt <- df_small %>% count(m_superclass, name = "n_super")
+low_super <- super_cnt %>% filter(n_super < 10) %>% pull(m_superclass)
+
+df2 <- df_small %>%
+  mutate(
+    Domain     = x_domain,
+    Phylum     = ifelse(x_phylum %in% low_phy, "Other phyla", x_phylum),
+    Superclass = ifelse(m_superclass %in% low_super, "Other superclasses", m_superclass),
+    Endpoint   = y,
+    w_raw      = abs(indirect)
+  )
+
+plot_dat <- df2 %>%
+  group_by(Domain, Phylum, Superclass, Endpoint) %>%
+  summarise(w = sum(w_raw, na.rm = TRUE), .groups = "drop") %>%
+  filter(is.finite(w), w > 0) %>%
+  mutate(w = sqrt(w))
+
+#  3) endpoint grouping (4 classes) 
+grp_physical <- c("D50","Ks","C","N")
+grp_nutrient <- c("Fe","Ti","Zn","Ni","Co","Cr","Cd","Ba")
+grp_ion_salt <- c("EC","K","Ca","Mg")
+
+plot_dat <- plot_dat %>%
+  mutate(
+    Endpoint_chr  = as.character(Endpoint),
+    EndpointGroup = case_when(
+      Endpoint_chr %in% grp_physical ~ "Physical",
+      Endpoint_chr %in% grp_nutrient ~ "Nutrients",
+      Endpoint_chr %in% grp_ion_salt ~ "Ions/Salinity",
+      TRUE                           ~ "Rock-derived metals"
+    )
+  )
+
+endpoint_group_cols <- c(
+  "Physical"            = "#8DA0CB",
+  "Nutrients"           = "#66C2A5",
+  "Ions/Salinity"       = "#FC8D62",
+  "Rock-derived metals" = "#CAB2D6"
+)
+
+#  4) factor orders 
+domain_order <- c("Bacteria","Archaea","Eukaryota")
+plot_dat$Domain <- factor(plot_dat$Domain, levels = domain_order[domain_order %in% unique(plot_dat$Domain)])
+
+# phylum
+phylum_levels <- unique(as.character(plot_dat$Phylum))
+phylum_levels <- c(setdiff(phylum_levels, "Other phyla"), "Other phyla")
+plot_dat$Phylum <- factor(plot_dat$Phylum, levels = phylum_levels)
+
+# superclass
+superclass_order <- c(
+  "Organoheterocyclic compounds",
+  "Lipids and lipid-like molecules",
+  "Benzenoids",
+  "Phenylpropanoids and polyketides",
+  "Organic acids and derivatives",
+  "Organic nitrogen compounds",
+  "Organic oxygen compounds",
+  "Alkaloids and derivatives",
+  "Nucleosides, nucleotides, and analogues",
+  "Lignans, neolignans and related compounds",
+  "Unclassified",
+  "Other superclasses"
+)
+superclass_order <- superclass_order[superclass_order %in% unique(plot_dat$Superclass)]
+superclass_order <- c(superclass_order, setdiff(unique(plot_dat$Superclass), superclass_order))
+plot_dat$Superclass <- factor(plot_dat$Superclass, levels = superclass_order)
+
+# endpoint
+endpoint_order <- keep_y
+endpoint_order <- endpoint_order[endpoint_order %in% unique(plot_dat$Endpoint)]
+endpoint_order <- c(endpoint_order, setdiff(unique(plot_dat$Endpoint), endpoint_order))
+plot_dat$Endpoint <- factor(plot_dat$Endpoint, levels = endpoint_order)
+
+# 5) colors 
+domain_cols <- c(Archaea="#B8B2D9", Bacteria="#8FB3DD", Eukaryota="#C7C7C7")
+domain_cols <- domain_cols[names(domain_cols) %in% levels(plot_dat$Domain)]
+
+super_cols <- c(
+  "Organoheterocyclic compounds"="#F3B670",
+  "Lipids and lipid-like molecules"="#CCBCD9",
+  "Benzenoids"="#8EC585",
+  "Phenylpropanoids and polyketides"="#F9F1D6",
+  "Organic acids and derivatives"="#B1D0E3",
+  "Organic nitrogen compounds"="#DEE4D2",
+  "Organic oxygen compounds"="#ECDDE4",
+  "Alkaloids and derivatives"="#8c6bb1",
+  "Nucleosides, nucleotides, and analogues"="#80cdc1",
+  "Lignans, neolignans and related compounds"="#a6bddb",
+  "Unclassified"="#f8bbd0",
+  "Other superclasses"="#E0E0E0"
+)
+super_cols <- super_cols[names(super_cols) %in% levels(plot_dat$Superclass)]
+miss_super <- setdiff(levels(plot_dat$Superclass), names(super_cols))
+if (length(miss_super) > 0) super_cols <- c(super_cols, setNames(rep("#cccccc", length(miss_super)), miss_super))
+
+phylum_base <- setNames(rep("#f0f0f0", length(levels(plot_dat$Phylum))), levels(plot_dat$Phylum))
+phylum_key_cols <- c(
+  "Actinobacteria"   = "#8AC2B3",
+  "Proteobacteria"   = "#FB8072",
+  "Cyanobacteria"    = "#80B1D3",
+  "Bacteroidetes"    = "#FDEE74",
+  "Firmicutes"       = "#AFACCF",
+  "Planctomycetes"   = "#C5E2B6",
+  "Chloroflexi"      = "#979B3C",
+  "Verrucomicrobia"  = "#848CC5",
+  "Other phyla"      = "#BDBDBD"
+)
+phylum_key_cols <- phylum_key_cols[names(phylum_key_cols) %in% levels(plot_dat$Phylum)]
+phylum_cols <- phylum_base
+phylum_cols[names(phylum_key_cols)] <- phylum_key_cols
+
+# endpoint nodes (for endpoint stratum + labels)
+endpoint_nodes <- plot_dat %>%
+  group_by(Endpoint, EndpointGroup) %>%
+  summarise(w = sum(w), .groups = "drop")
+
+# label filter (optional)
+endpoint_label_min_prop <- 0.02
+endpoint_nodes2 <- endpoint_nodes %>%
+  mutate(
+    prop  = w / sum(w),
+    label = ifelse(prop >= endpoint_label_min_prop, as.character(Endpoint), "")
+  )
+
+# 6) plot 
+ggplot(
+  plot_dat,
+  aes(axis1 = Domain, axis2 = Phylum, axis3 = Superclass, axis4 = Endpoint, y = w)
+) +
+  scale_x_discrete(
+    limits = c("Domain","Phylum","Superclass","Endpoint"),
+    expand = c(0.18, 0.18)
+  ) +
+  
+  # flows colored by Superclass
+  geom_alluvium(aes(fill = Superclass), alpha = 0.45, width = 1/28, knot.pos = 0.35) +
+  scale_fill_manual(values = super_cols, guide = "none") +
+  
+  # Domain
+  ggnewscale::new_scale_fill() +
+  geom_stratum(aes(x = 1, stratum = Domain, fill = after_stat(stratum)),
+               width = 1/10, color = "white", size = 0.4) +
+  scale_fill_manual(values = domain_cols, guide = "none") +
+  
+  # Phylum
+  ggnewscale::new_scale_fill() +
+  geom_stratum(aes(x = 2, stratum = Phylum, fill = after_stat(stratum)),
+               width = 1/10, color = "white", size = 0.4) +
+  scale_fill_manual(values = phylum_cols, guide = "none") +
+  
+  # Superclass
+  ggnewscale::new_scale_fill() +
+  geom_stratum(aes(x = 3, stratum = Superclass, fill = after_stat(stratum)),
+               width = 1/10, color = "white", size = 0.4) +
+  scale_fill_manual(values = super_cols, guide = "none") +
+  
+  # labels for col 1~3 (black)
+  geom_text(
+    stat = "stratum",
+    aes(label = ifelse(after_stat(x) < 4, as.character(after_stat(stratum)), "")),
+    size = 4, color = "black"
+  ) +
+  
+  # Endpoint stratum (group colors)
+  ggnewscale::new_scale_fill() +
+  geom_stratum(
+    data = endpoint_nodes,
+    aes(x = 4, stratum = Endpoint, y = w, fill = EndpointGroup),
+    width = 1/10, color = "white", size = 0.4,
+    inherit.aes = FALSE
+  ) +
+  scale_fill_manual(values = endpoint_group_cols, guide = "none") +
+  
+  # Endpoint labels (filtered)
+  geom_text(
+    data = endpoint_nodes2,
+    aes(x = 4, stratum = Endpoint, y = w, label = label),
+    stat = "stratum",
+    inherit.aes = FALSE,
+    size = 4, color = "black",
+    hjust = 0, nudge_x = 0.05
+  ) +
+  
+  coord_cartesian(clip = "off") +
+  theme_void(base_size = 16) +
+  theme(
+    legend.position = "none",
+    plot.margin = margin(10, 80, 10, 20)
+  )
+
+
+endpoint_list <- endpoint_nodes2 %>%
+  mutate(Endpoint = factor(Endpoint, levels = levels(plot_dat$Endpoint))) %>%
+  arrange(Endpoint) %>%
+  transmute(
+    Endpoint = as.character(Endpoint),
+    prop = prop,
+    shown = label != ""
+  )
+
+cat("\nAll endpoints (top -> bottom):\n")
+print(endpoint_list)
+
+
+#ggsave(filename = '~/Desktop/replot/mediation/mediation.pdf',width = 9, height = 4.5)
+```

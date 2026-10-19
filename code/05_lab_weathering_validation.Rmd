@@ -1,0 +1,1229 @@
+---
+title: "Desert restoration project -- Part 5: Laboratory validation of sand weathering"
+author: "Qiong_Chen"
+date: "2026-08-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+source("00_setup.R")
+```
+
+# 5. Laboratory validation of sand weathering
+
+## 5.1 F8 incubation experiment
+
+### Hydraulic conductivity
+
+```{r f8-lab-ks}
+# an example for visualization and ststistics with mixed model
+  library(ggplot2)
+  library(dplyr)
+
+  data <- read.delim('~/Desktop/replot/culture/field-experiment/data-plot/5_10_deof_tar.txt',
+                     stringsAsFactors = FALSE, check.names = FALSE,
+                     header = T, sep = "\t")
+  data$day <- as.factor(data$day)
+  
+  # 修改组名
+  
+  data$group <- dplyr::recode(data$group,
+                              "1*" = "1x inoculum",
+                              "2*" = "2x inoculum")
+  
+  
+  # 固定顺序
+  data$group <- factor(data$group, levels = c("NC", "1x inoculum", "2x inoculum"))
+  
+
+  
+  #F8
+  mycolors <- c(
+    "NC" = "#E64B35FF",
+    "1x inoculum" = "#e0f7fa",
+    "2x inoculum" = "#00bcd4"
+  )
+  
+  # H12
+  mycolors <- c("NC" = "#E64B35FF",
+                "1x inoculum" = "#CE99D6",
+                "2x inoculum" = "#8565BF")
+  
+  # myborder <- c(
+  #   "NC" = "#E64B35FF",
+  #   "1x inoculum" = "#263238",
+  #   "2x inoculum" = "#263238"
+  # )
+  
+  ggplot(data, aes(x = day, y = Ks, fill = group)) +
+    geom_boxplot(
+      aes(color = group),
+      width = 0.6,
+      position = position_dodge(width = 0.65),
+      outlier.shape = NA,
+      alpha = 0.85
+    ) +
+    geom_jitter(
+      color = "#263238",
+      position = position_jitterdodge(jitter.width = 0.12, dodge.width = 0.65),
+      size = 1.6,
+      alpha = 0.7,
+      show.legend = FALSE
+    ) +
+    scale_fill_manual(values = mycolors) +
+    scale_color_manual(values = myborder) +
+    labs(x = "", y = "Estimated Ks (m/day)", fill = "Group", color = "Group") +
+    theme_bw(base_size = 20) +
+    theme(
+      panel.grid = element_blank(),
+     # text = element_text(family = "Arial"),
+      legend.position = "bottom",
+      legend.title = element_blank(),
+      axis.text = element_text(size = 20, color = "black"),
+      axis.title = element_text(size = 20, color = "black")
+    )
+  
+  
+  data <- read.delim('~/Desktop/replot/culture/field-experiment/data-plot/5_10_deof_tar.txt',
+                     stringsAsFactors = FALSE, check.names = FALSE,
+                     header = T, sep = "\t")
+  
+  data <- data %>%
+    mutate(
+      group = factor(group, levels = c("NC", "1*", "2*")),
+      day   = factor(day, levels = c(0, 21, 42, 63, 120)),
+      order = factor(order),
+      rep_id = interaction(group, order, drop = TRUE)
+    )
+  
+  # mixed model
+  fit_lmm <- lmer(Con ~ group * day + (1 | rep_id), data = data)
+  
+  anova(fit_lmm)
+  summary(fit_lmm)
+  
+  
+  emm1 <- emmeans(fit_lmm, ~ group | day)
+  pairs(emm1, adjust = "BH")
+  
+  plot(fit_lmm)
+  qqnorm(resid(fit_lmm))
+  qqline(resid(fit_lmm))
+  
+  shapiro.test(resid(fit_lmm))
+  
+  
+  
+```
+
+### Particle-volume distribution
+
+```{r f8-lab-particle-volume}
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+df <- read.delim('~/Desktop/replot/culture/siderophore-experi/plot-data/No9-volume.txt',
+                 stringsAsFactors = FALSE, check.names = FALSE,
+                 header = T, sep = "\t")
+df <- read.delim('~/Desktop/replot/culture/siderophore-experi/plot-data/ct-volume-nc-3.txt',
+                 stringsAsFactors = FALSE, check.names = FALSE,
+                 header = T, sep = "\t")
+table(df$group)
+df$group <- factor(df$group,levels = c('No3','NC'))
+
+
+
+# 清洗 & 转换体积
+df <- df %>%
+  filter(Volume > 0) %>%
+  mutate(log_volume = log10(Volume))
+
+
+# 设置统一 bin
+bin_breaks <- seq(floor(min(df$log_volume)), ceiling(max(df$log_volume)), length.out = 50)
+bin_mid <- head(bin_breaks, -1) + diff(bin_breaks) / 2
+
+# 体积加权统计
+df_stat <- df %>%
+  mutate(bin = cut(log_volume, breaks = bin_breaks, include.lowest = TRUE)) %>%
+  group_by(group, bin) %>%
+  summarise(volume_sum = sum(Volume), .groups = "drop") %>%
+  group_by(group) %>%
+  mutate(
+    freq_weighted = volume_sum / sum(volume_sum) * 100,
+    cum_weighted = cumsum(freq_weighted),
+    mid = bin_mid[as.numeric(bin)]
+  ) %>%
+  ungroup()
+
+# 计算 50% 累计位置（视觉标线位置）
+
+median_pos <- df_stat %>%
+  arrange(group, mid) %>%
+  group_by(group) %>%
+  summarise(
+    median_log_volume = approx(
+      x = cum_weighted,
+      y = mid,
+      xout = 50
+    )$y
+  )
+median_pos
+
+# 主图绘制
+
+
+ggplot(df_stat, aes(x = mid)) +
+  geom_col(aes(y = freq_weighted), fill = "#E0B83E", width = 0.2) +
+  geom_line(aes(y = cum_weighted), color = "#4DADB9", size = 1) +
+  geom_vline(data = median_pos, aes(xintercept = median_log_volume), 
+             linetype = "dashed", color = "black") +
+  facet_wrap(~ group, ncol = 1) +
+  scale_y_continuous(
+    name = "Frequency",
+    sec.axis = sec_axis(~ ., name = "Cumulative Volume %")
+  ) +
+  scale_x_continuous(
+    name = expression(log[10](Volume~nm^3)),  # 改为“立方纳米”单位
+    limits = c(14.5, 17.5),
+    breaks = seq(14.5, 17.5, by = 0.5)  # 自定义坐标轴刻度，网格更整齐
+  ) +
+  theme_pubr(base_size = 16) +
+  theme(
+    axis.text.x = element_text(size = 16, colour = 'black'),
+    axis.text.y = element_text(size = 16, colour = 'black'),
+    strip.background = element_rect(fill = "#FCF9F0"),
+    
+    # 加虚线网格线样式（重点）
+    panel.grid.major = element_line(color = "grey80", linetype = "dashed"),
+   # panel.grid.minor = element_blank(),  # 可选：隐藏小网格
+    panel.background = element_rect(fill = "white", color = NA)
+  )
+
+
+
+
+
+ggsave(filename = '~/Desktop/replot/culture/siderophore-experi/plot-data/ct-nc-3.pdf',width = 6, height = 5)
+
+
+
+# 显著性检验：取 log10(Volume) 样本，KS检验 + Mann-Whitney U 检验
+# ---------------------------------
+x1 <- df$log_volume[df$group == "No3"]
+x2 <- df$log_volume[df$group == "NC"]
+
+# KS test, 比较两个累计分布曲线,非参数、分布无假设，非常适合
+ks_result <- ks.test(x1, x2)
+print(ks_result) #  p-value < 2.2e-16
+
+# Wilcoxon rank-sum test (Mann-Whitney), 比较中位数或秩和
+wilcox_result <- wilcox.test(x1, x2)
+print(wilcox_result) # p-value < 2.2e-16
+
+
+```
+
+### Bacterial colonization and viability
+
+```{r f8-lab-colonization}
+# PMA-qPCR visualization
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(emmeans)
+library(patchwork)
+library(ggbeeswarm)
+library(ggplot2)
+
+# load data 
+data <- read.delim('~/Desktop/replot/culture/PMA/lab-dose-c.txt',
+                   stringsAsFactors = FALSE, check.names = FALSE,
+                   header = TRUE, sep = "\t")
+
+# 
+# PMA-qPCR: data cleaning -> technical replicates -> viability plots
+# Goal:
+#   - Panel A: target viability = live-target / total-target
+#   - Panel B: 16S viability   = live-16s / total-16s
+# Notes:
+#   - site (A01/A02/A03, E01/E02/E03, F01/F02/F03) are TECHNICAL replicates.
+#   - Collapse to biological replicates by sample_id = first letter (A/E/F).
+#   - Data in input file are copies per reaction; convert to copies/mg sand:
+#       0.1 g sand, 50 uL elution, 2 uL template -> factor = 0.25
+#   - LOD (lowest standard) = 1e2 copies/reaction -> LOD_mg = 25 copies/mg
+#   - For target in NC (not assayed; NA), we show as ND via LOD fill for plotting only.
+# 
+
+
+
+# 1) Parameters
+
+infile <- "~/Desktop/replot/culture/PMA/lab-dose-c.txt" #f8
+infile <- "~/Desktop/replot/culture/PMA/lab-dose-3.txt" #h12
+
+CF <- 0.25             # copies/reaction -> copies/mg sand (2 uL template)
+LOD_rxn <- 1e2         # lowest standard (copies/reaction)
+LOD_mg  <- LOD_rxn*CF  # 25 copies/mg (for plotting ND as LOD)
+
+# color palette 
+cols <- c(
+  "NC"    = "#E64B35FF",  # orange-red
+  "wt-5"  = "#E2F7FA",  # light blue
+  "wt-10" = "#2ABED2"   # deeper blue
+)
+
+#E2F7FA
+
+cols <- c(
+  "NC"    = "#E64B35FF",  # orange-red
+  "wt-5"  = "#ce93d8",  # light blue
+  "wt-10" = "#7e57c2"   # deeper blue
+)
+
+
+
+# 2) Read data
+
+raw <- read.delim(
+  infile,
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  header = TRUE,
+  sep = "\t"
+)
+
+# 3) Clean + convert units
+
+df <- raw %>%
+  mutate(
+    day = as.numeric(day),
+    group = factor(group, levels = c("NC", "wt-5", "wt-10")),
+    site = as.character(site),
+    # biological replicate ID (A/E/F) from site column
+    sample_id = sub("^([A-Za-z]).*$", "\\1", site),
+    
+    # parse numbers (protect against "NA" strings) and convert to copies/mg
+    `total-16s`     = suppressWarnings(as.numeric(`total-16s`))     * CF,
+    `live-16s`      = suppressWarnings(as.numeric(`live-16s`))      * CF,
+    `total-target`  = suppressWarnings(as.numeric(`total-target`))  * CF,
+    `live-target`   = suppressWarnings(as.numeric(`live-target`))   * CF
+  )
+
+
+# 4) Collapse TECHNICAL replicates (A01/A02/A03 -> A; etc.)
+#    Keep mean per biological replicate (A/E/F) for each day x group
+
+df_sum <- df %>%
+  group_by(day, group, sample_id) %>%
+  summarise(
+    total_16s = mean(`total-16s`, na.rm = TRUE),
+    live_16s  = mean(`live-16s`,  na.rm = TRUE),
+    total_t   = mean(`total-target`, na.rm = TRUE),
+    live_t    = mean(`live-target`,  na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+# 5) Viability metrics
+
+df_sum <- df_sum %>%
+  mutate(
+    viab_16s = ifelse(!is.na(total_16s) & total_16s > 0, live_16s / total_16s, NA_real_),
+    viab_t   = ifelse(!is.na(total_t)   & total_t   > 0, live_t   / total_t,   NA_real_)
+  )
+
+# 6) Build plotting data
+#    Only day 63 & 120 for points/boxplots, day 0 can be used as background in other plots if needed.
+#    For target in NC (NA), fill with LOD for plotting as ND (optional but useful for showing "no detection").
+
+viab_long <- df_sum %>%
+  filter(day %in% c(63, 120)) %>%
+  transmute(
+    day = factor(day),
+    group,
+    sample_id,
+    viab_target = viab_t,
+    viab_16s    = viab_16s
+  ) %>%
+  pivot_longer(
+    cols = c(viab_target, viab_16s),
+    names_to = "assay",
+    values_to = "viability"
+  ) %>%
+  mutate(
+    assay = recode(
+      assay,
+      viab_target = "Inoculated strain",
+      viab_16s    = "Total bacteria"
+    )
+  )
+
+
+# 7) Plot: Viability over time (two panels)
+#    x = day, boxplot + points, group colors as specified
+
+
+# Viability plot 
+
+viab_long2 <- viab_long %>%
+  mutate(
+    viability = ifelse(assay == "Inoculated strain (target)" & group == "NC" & is.na(viability),
+                       0, viability)
+  )
+
+dodge <- position_dodge(width = 0.8)
+
+ggplot(viab_long2, aes(x = day, y = viability, fill = group)) +
+  geom_boxplot(
+    aes(group = interaction(day, group)),
+    position = dodge,
+    width = 0.50,
+    outlier.shape = NA,
+    alpha = 0.60,
+    color = "black",
+    linewidth = 0.5
+  ) +
+  ggbeeswarm::geom_quasirandom(
+    aes(group = interaction(day, group), fill = group),
+    dodge.width = 0.75,
+    width = 0.05,
+    varwidth = FALSE,
+    shape = 21,
+    color = "black",
+    stroke = 0.3,
+    size = 2.6,
+    alpha = 0.95
+  ) +
+  facet_wrap(~ assay, ncol = 1) +
+  scale_fill_manual(
+    values = cols,
+    breaks = c("NC", "wt-5", "wt-10"),
+    labels = c("NC", "1× inoculum", "2× inoculum")
+  ) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(
+    x = "Day",
+    y = "Viability ratio (PMA+ / no PMA)",
+    title = "PMA-qPCR viability over time",
+    fill = NULL
+  ) +
+  theme_bw(base_size = 20) +
+  theme(
+    panel.grid.minor = element_blank(),
+    strip.background = element_rect(fill = "white"),
+    legend.position = "bottom"
+  )
+
+
+ggsave(filename = '~/Desktop/replot/culture/PMA/pma.pdf', width = 6, height = 6)
+
+# nc处理为背景线
+ 
+ library(dplyr)
+ library(ggplot2)
+ library(ggbeeswarm)
+ 
+ dodge <- position_dodge(width = 0.75)
+ 
+ # 1) 只画接种组（wt-5 / wt-10）
+ viab_plot <- viab_long2 %>%
+   filter(group %in% c("wt-5","wt-10"),
+          day %in% c(63,120))
+ 
+ # 2) 计算 NC 背景线（每个 assay、每个 day 一条）
+ # 用中位数更稳（也可改 mean）
+
+ nc_line <- viab_long2 %>%
+   filter(day %in% c(63,120)) %>%
+   mutate(day = factor(day, levels = c(63,120))) %>%
+   group_by(assay, day) %>%
+   summarise(
+     y = if (unique(assay) == "Inoculated strain") {
+       0
+     } else {
+       median(viability[group == "NC"], na.rm = TRUE)
+     },
+     .groups = "drop"
+   ) %>%
+   mutate(
+     x = as.numeric(day),
+     xstart = x - 0.35,
+     xend   = x + 0.35
+   )
+ 
+ 
+ # 3) 画背景线的 x 范围：覆盖该 day 下两组箱体的宽度
+ # 这里用数值 x：day 是离散轴，内部是 1,2,...；63在1，120在2（取决于levels顺序）
+ viab_plot <- viab_plot %>%
+   mutate(day = factor(day, levels = c(63,120)))
+ nc_line <- nc_line %>%
+   mutate(day = factor(day, levels = c(63,120)),
+          x = as.numeric(day),
+          xstart = x - 0.35,
+          xend   = x + 0.35)
+ 
+ # 4) 作图：boxplot+quasirandom + NC 背景线
+  ggplot(viab_plot, aes(x = day, y = viability, fill = group)) +
+   geom_boxplot(
+     aes(group = interaction(day, group)),
+     position = dodge,
+     width = 0.50,
+     outlier.shape = NA,
+     alpha = 0.60,
+     color = "black",
+     linewidth = 0.5
+   ) +
+   ggbeeswarm::geom_quasirandom(
+     aes(group = interaction(day, group), fill = group),
+     dodge.width = 0.75,
+     width = 0.05,
+     varwidth = FALSE,
+     shape = 21,
+     color = "black",
+     stroke = 0.3,
+     size = 2,
+     alpha = 0.95
+   ) +
+   # NC 背景线（橙红色），每个day一条，按 assay 分面
+   geom_segment(
+     data = nc_line,
+     aes(x = xstart, xend = xend, y = y, yend = y),
+     inherit.aes = FALSE,
+     color = cols["NC"],
+     linewidth = 0.9,
+     linetype = "44"
+   ) +
+   facet_wrap(~ assay, ncol = 1) +
+   scale_fill_manual(values = cols) +
+   coord_cartesian(ylim = c(0, 1)) +
+   labs(x = "", y = "Viability ratio (PMA+ / no PMA)",
+        title = "") +
+   theme_bw(base_size = 16) +
+   theme(
+     panel.grid.minor = element_blank(),
+     strip.background = element_rect(fill = "white"),
+     legend.position = "none"
+   )
+ 
+  ggsave(filename = "~/Desktop/replot/culture/PMA/wt3-5-10-viability.pdf", width = 4,height = 6)
+
+ 
+ 
+
+ 
+ #  viab_long2（包含 day, group, assay, viability）
+ # 只做 63/120，且只做 wt-5 / wt-10
+ dat_stat <- viab_long2 %>%
+   filter(day %in% c(63,120),
+          group %in% c("wt-5","wt-10")) %>%
+   mutate(
+     day = factor(day),
+     group = factor(group),
+     # logit transform with small offset to avoid Inf
+     viab_adj = pmin(pmax(viability, 1e-6), 1 - 1e-6),
+     logit_viab = qlogis(viab_adj)
+   )
+ 
+ # 分别对 target 和 16S 做 two-way
+ for(a in unique(dat_stat$assay)){
+   cat("\n====================\nAssay:", a, "\n")
+   d <- dat_stat %>% filter(assay == a)
+   
+   m <- lm(logit_viab ~ group * day, data = d)
+   print(anova(m))     # two-way ANOVA table
+   # 可选：看系数方向
+   print(summary(m))
+   
+   # 诊断（可选）
+   # par(mfrow=c(1,2)); plot(m, which=1); plot(m, which=2); par(mfrow=c(1,1))
+ }
+ 
+ 
+ library(emmeans)
+ 
+ # 只针对 target 这一个 assay
+ d <- dat_stat %>% filter(assay == "Inoculated strain")
+ 
+ m <- lm(logit_viab ~ group * day, data = d)
+ 
+ # 1) 每个组内：63 vs 120
+ emm_day_within_group <- emmeans(m, ~ day | group)
+ pairs(emm_day_within_group, adjust = "none")   # 只有两次比较，可用 none
+ 
+ # 2) 每个时间点内：wt-5 vs wt-10
+ emm_group_within_day <- emmeans(m, ~ group | day)
+ pairs(emm_group_within_day, adjust = "none")
+ 
+ # （可选）把估计值转回原始 viability 比例（0-1）更直观
+ summary(emmeans(m, ~ group * day), type = "response")
+ 
+ # overall day effect (averaged across groups)
+ emmeans(m, ~ day) |> pairs(adjust="none")
+ 
+ 
+
+# 8) OPTIONAL (recommended): add one more plot to support "no contamination"
+#    Show NC total-16S over time (0,63,120) as background evidence
+
+tot16s_nc <- df_sum %>%
+  filter(group == "NC") %>%
+  mutate(day = factor(day)) %>%
+  filter(day %in% c("0","63","120")) %>%
+  mutate(log_total_16s = log10(total_16s))
+ 
+ggplot(tot16s_nc, aes(x = day, y = log_total_16s)) +
+   geom_boxplot(
+     outlier.shape = NA,
+     width = 0.60,
+     alpha = 0.55,
+     fill = cols["NC"],
+     color = "black",      # 黑色外框/线
+     linewidth = 0.8
+   ) +
+  geom_quasirandom(
+    dodge.width = 0.75,    # 和 boxplot 的 dodge 对齐
+    width = 0.05,          # 横向抖动幅度（很小，不会乱飘）
+    varwidth = FALSE,
+     fill = cols["NC"],    # 点填充色
+    color = "black", 
+    shape = 21,
+    stroke = 0.3,
+    size = 2.6,
+    alpha = 0.95
+  ) +
+   # geom_point(
+   #   shape = 21,           # 可同时设置 fill 和描边
+   #   fill = cols["NC"],    # 点填充色
+   #   color = "black",      # 点外圈黑色
+   #   stroke = 0.7,
+   #   size = 2.6,
+   #   alpha = 0.95
+   # ) +
+   labs(x = "", y = "log10(total 16S copies / mg sand)", title = "") +
+   theme_bw(base_size = 20) +
+   theme(panel.grid.minor = element_blank())
+ 
+ggsave(filename = "~/Desktop/replot/culture/PMA/nc-background.pdf", width = 3,height = 3)
+
+
+ 
+ library(tidyverse)
+ library(ggplot2)
+ 
+
+
+ cols <- c(
+   "NC"    = "#E64B35FF",  # orange-red
+   "wt-5"  = "#4DBBD5FF",  # light blue
+   "wt-10" = "#00A087FF"   # deeper blue
+ )
+ 
+ 
+ # 只取 target 的 Total(no PMA)，用于验证接种梯度（更稳定）
+ dose_df <- df_sum %>%
+   filter(day %in% c(63, 120), group %in% c("wt-5","wt-10")) %>%
+   mutate(day = factor(day)) %>%
+   select(day, group, total_t)
+ 
+ dodge <- position_dodge(width = 0.75)
+ 
+ library(scales)
+ 
+  ggplot(dose_df, aes(x = day, y = total_t, fill = group)) +
+   geom_boxplot(
+     aes(group = interaction(day, group)),
+     position = dodge,
+     width = 0.60,
+     outlier.shape = NA,
+     alpha = 0.60,
+     color = "black",
+     linewidth = 0.8
+   ) +
+    geom_quasirandom(
+      aes(group = interaction(day, group), fill = group),
+      dodge.width = 0.75,    # 和 boxplot 的 dodge 对齐
+      width = 0.05,          # 横向抖动幅度（很小，不会乱飘）
+      varwidth = FALSE,
+      shape = 21,
+      color = "black",
+      stroke = 0.3,
+      size = 2.6,
+      alpha = 0.95
+    ) +
+   # geom_point(
+   #   aes(group = interaction(day, group), fill = group),
+   #   position = dodge,
+   #   shape = 21,
+   #   color = "black",
+   #   stroke = 0.7,
+   #   size = 2.6,
+   #   alpha = 0.95
+   # ) +
+   scale_fill_manual(values = cols) +
+    scale_y_continuous(labels = label_scientific()) +
+   labs(
+     x = "",
+     y = "Total target copies / mg sand (no PMA)",
+    # title = "Dose check of inoculated strain (wt-5 vs wt-10)"
+   ) +
+   theme_bw(base_size = 20) +
+   theme(
+     panel.grid.minor = element_blank(),
+     strip.background = element_rect(fill = "white"), 
+     legend.position = "none"
+   )
+ 
+  ggsave(filename = "~/Desktop/replot/culture/PMA/wt3-dose-check.pdf", width = 4,height = 3)
+  
+  library(tidyverse)
+  library(emmeans)
+  
+  # dose_df: day, group, total_t (copies/mg), 只含 wt-5/wt-10，且 day=63/120
+  dat <- dose_df %>%
+    filter(day %in% c(63,120), group %in% c("wt-5","wt-10")) %>%
+    mutate(
+      day = factor(day),
+      group = factor(group),
+      log_total = log10(total_t)
+    )
+  
+  # two-way ANOVA (via lm)
+  m <- lm(log_total ~ group * day, data = dat)
+  anova(m)
+  summary(m)
+  
+  # post-hoc / simple effects 
+  # 1) Dose effect within each day: wt-10 vs wt-5 at day63 and day120
+  emm_g_in_day <- emmeans(m, ~ group | day)
+  pairs(emm_g_in_day, adjust = "none")   # 只有两次比较，可用 none
+  # pairs(emm_g_in_day, adjust = "bonferroni")  # 更保守
+  
+  # 2) Time effect within each group: day120 vs day63 for wt-5 and wt-10
+  emm_day_in_g <- emmeans(m, ~ day | group)
+  pairs(emm_day_in_g, adjust = "none")
+  
+  # 3) 如果想要回到“倍数差异（fold-change）”的可解释输出：
+  # log10尺度的差 -> 10^(差) = fold-change
+  contrast(emm_g_in_day, method = "revpairwise") %>%
+    summary(infer = TRUE) %>%
+    mutate(fold = 10^estimate)   # wt-10 / wt-5 的fold（在每个day）
+```
+
+### Sand-surface alteration
+
+```{r f8-lab-surface-alteration}
+data <- read.delim(
+  "~/Desktop/replot/culture/field-experiment/cq-eds-20260430/120-lab-sem.txt",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  header = TRUE,
+  sep = "\t"
+)
+
+# Clean data
+# F8 labeled as WT, H12 labeled as WT-3
+df <- data %>%
+  mutate(
+    group = trimws(group),
+    group = factor(group, levels = c("NC", "WT", "WT-3"))
+  ) %>%
+  filter(!is.na(group))
+
+
+# Colors
+
+mycolors <- c(
+  "NC"   = "#E64B35FF",
+  "WT"   = "#5EBEAE",
+  "WT-3" = "#A890D1"
+)
+
+
+# Theme
+
+theme_my <- theme_bw(base_size = 18) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "none",
+    legend.title = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
+    plot.title = element_text(size = 18, color = "black", hjust = 0.5),
+    axis.text = element_text(size = 18, color = "black"),
+    axis.title = element_text(size = 18, color = "black")
+  )
+
+
+# Helper function
+
+make_boxplot <- function(dat, yvar, title, ylab,
+                         y_add_lower = 0,
+                         y_add_upper = NULL,
+                         hide_x_text = FALSE) {
+  
+  yvals <- dat[[yvar]]
+  
+  if (is.null(y_add_upper)) {
+    y_add_upper <- diff(range(yvals, na.rm = TRUE)) * 0.01
+  }
+  
+  p <- ggplot(dat, aes(x = group, y = .data[[yvar]], fill = group)) +
+    geom_boxplot(
+      color = "#263238",
+      width = 0.6,
+      outlier.shape = NA,
+      alpha = 0.85,
+      linewidth = 0.8
+    ) +
+    geom_point(
+      aes(fill = group),
+      position = position_jitter(width = 0.10, height = 0),
+      shape = 21,
+      size = 3.2,
+      stroke = 0.35,
+      color = "#263238",
+      alpha = 0.8,
+      show.legend = FALSE
+    ) +
+    scale_fill_manual(values = mycolors) +
+    scale_x_discrete(drop = TRUE, na.translate = FALSE) +
+    scale_y_continuous(
+      expand = expansion(mult = c(0.1, 0), add = c(y_add_lower, y_add_upper))
+    ) +
+    labs(
+      x = "",
+      y = ylab,
+      title = title
+    ) +
+    theme_my
+  
+  if (hide_x_text) {
+    p <- p + theme(
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.title.x = element_blank()
+    )
+  } else {
+    p <- p + theme(
+      axis.text.x = element_text(
+        angle = 0,
+        hjust = 0.5,
+        vjust = 0.5,
+        color = "black",
+        size = 18
+      )
+    )
+  }
+  
+  return(p)
+}
+
+
+# Subsets
+
+df_nc_wt <- df %>%
+  filter(group %in% c("NC", "WT")) %>%
+  droplevels()
+
+df_nc_wt3 <- df %>%
+  filter(group %in% c("NC", "WT-3")) %>%
+  droplevels()
+
+
+# NC vs WT: Mean local variance
+
+p1 <- make_boxplot(
+  dat = df_nc_wt,
+  yvar = "Mean_local_variance",
+  title = "Mean local variance",
+  ylab = "(a.u.)",
+  y_add_lower = 0,
+  y_add_upper = 15,
+  hide_x_text = FALSE
+)
+
+
+# NC vs WT: Altered surface fraction
+
+p2 <- make_boxplot(
+  dat = df_nc_wt,
+  yvar = "Altered_surface_fraction",
+  title = "Altered surface fraction",
+  ylab = "(%)",
+  y_add_lower = 0,
+  y_add_upper = 5,
+  hide_x_text = FALSE
+)
+
+
+# NC vs WT-3: Mean local variance
+
+p3 <- make_boxplot(
+  dat = df_nc_wt3,
+  yvar = "Mean_local_variance",
+  title = "Mean local variance",
+  ylab = "(a.u.)",
+  y_add_lower = 0,
+  y_add_upper = 15,
+  hide_x_text = TRUE
+)
+
+
+# NC vs WT-3: Altered surface fraction
+
+p4 <- make_boxplot(
+  dat = df_nc_wt3,
+  yvar = "Altered_surface_fraction",
+  title = "Altered surface fraction",
+  ylab = "(%)",
+  y_add_lower = 0,
+  y_add_upper = 5,
+  hide_x_text = FALSE
+)
+
+
+# Combine
+
+
+# NC vs WT
+p_nc_wt <- p1 + p2 +
+  plot_layout(widths = c(1, 1))
+
+p_nc_wt
+
+# NC vs WT-3
+p_nc_wt3 <- p3 / p4 
+  plot_layout(widths = c(1, 1))
+
+p_nc_wt3
+
+
+library(tidyverse)
+library(rstatix)
+
+data <- read.delim(
+  "~/Desktop/replot/culture/field-experiment/cq-eds-20260430/120-lab-sem.txt",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  header = TRUE,
+  sep = "\t"
+)
+
+df <- data %>%
+  mutate(
+    group = trimws(group),
+    group = factor(group, levels = c("NC", "WT", "WT-3"))
+  ) %>%
+  filter(!is.na(group))
+
+# Wilcoxon test function
+
+run_wilcox <- function(dat, yvar, comparison_name) {
+  dat %>%
+    wilcox_test(
+      formula = as.formula(paste(yvar, "~ group")),
+      exact = FALSE
+    ) %>%
+    mutate(
+      metric = yvar,
+      comparison_set = comparison_name
+    ) %>%
+    select(comparison_set, metric, group1, group2, n1, n2, statistic, p)
+}
+
+
+# NC vs WT
+
+df_nc_wt <- df %>%
+  filter(group %in% c("NC", "WT")) %>%
+  droplevels()
+
+test_nc_wt_variance <- run_wilcox(
+  df_nc_wt,
+  yvar = "Mean_local_variance",
+  comparison_name = "NC vs WT"
+)
+
+test_nc_wt_fraction <- run_wilcox(
+  df_nc_wt,
+  yvar = "Altered_surface_fraction",
+  comparison_name = "NC vs WT"
+)
+
+
+# NC vs WT-3
+
+df_nc_wt3 <- df %>%
+  filter(group %in% c("NC", "WT-3")) %>%
+  droplevels()
+
+test_nc_wt3_variance <- run_wilcox(
+  df_nc_wt3,
+  yvar = "Mean_local_variance",
+  comparison_name = "NC vs WT-3"
+)
+
+test_nc_wt3_fraction <- run_wilcox(
+  df_nc_wt3,
+  yvar = "Altered_surface_fraction",
+  comparison_name = "NC vs WT-3"
+)
+
+
+# Combine results
+
+wilcox_results <- bind_rows(
+  test_nc_wt_variance,
+  test_nc_wt_fraction,
+  test_nc_wt3_variance,
+  test_nc_wt3_fraction
+) %>%
+  mutate(
+    metric_label = recode(
+      metric,
+      "Mean_local_variance" = "Mean local variance",
+      "Altered_surface_fraction" = "Altered surface fraction"
+    ),
+    p_adj = p.adjust(p, method = "BH"),
+    signif = case_when(
+      p_adj < 0.001 ~ "***",
+      p_adj < 0.01  ~ "**",
+      p_adj < 0.05  ~ "*",
+      TRUE ~ "ns"
+    )
+  ) %>%
+  select(
+    comparison_set,
+    metric,
+    metric_label,
+    group1,
+    group2,
+    n1,
+    n2,
+    statistic,
+    p,
+    p_adj,
+    signif
+  )
+
+wilcox_results
+```
+
+
+### pH and electrical-conductivity dynamics
+
+```{r lab-ph-ec-dynamics}
+  library(ggplot2)
+  library(dplyr)
+  library(patchwork)
+  
+  mydata <- read.delim(
+    '~/Desktop/replot/culture/siderophore-experi/plot-data/es-ph-wt-5-10.txt',
+    stringsAsFactors = FALSE,
+    check.names = FALSE,
+    header = TRUE,
+    sep = "\t"
+  )
+  
+  # group 顺序
+  mydata$group <- factor(
+    mydata$group,
+    levels = c("NC", "wt-5", "wt-10", "wt3-5", "wt3-10")
+  )
+  
+  # 真实 day 数值
+  mydata$day_num <- as.numeric(as.character(mydata$day))
+ 
+  
+  # 横坐标等距位置
+  day_levels <- sort(unique(mydata$day_num))
+  mydata$day_id <- match(mydata$day_num, day_levels)
+  
+  # 两套数据
+  data_1 <- mydata %>%
+    filter(group %in% c("NC", "wt-5", "wt-10")) %>%
+    mutate(group = factor(group, levels = c("NC", "wt-5", "wt-10")))
+  
+  data_2 <- mydata %>%
+    filter(group %in% c("NC", "wt3-5", "wt3-10")) %>%
+    mutate(group = factor(group, levels = c("NC", "wt3-5", "wt3-10")))
+  
+  # 颜色
+  mycolors_1 <- c(
+    "NC"    = "#E64B35FF",
+    "wt-5"  = "#e0f7fa",
+    "wt-10" = "#00bcd4"
+  )
+  
+  mycolors_2 <- c(
+    "NC"     = "#E64B35FF",
+    "wt3-5"  = "#CE99D6",
+    "wt3-10" = "#8565BF"
+  )
+  
+  plot_box_jitter_glm_equalx <- function(data, yvar, ylab_text, fill_colors) {
+    
+    dodge_w <- 0.55
+    
+    # 用真实 day 拟合 glm，再映射回等距 day_id 上画线
+    pred_df <- do.call(
+      rbind,
+      lapply(levels(data$group), function(g) {
+        sub <- data %>% filter(group == g)
+        
+        fit <- glm(
+          formula = as.formula(paste(yvar, "~ day_num")),
+          data = sub
+        )
+        
+        newdat <- data.frame(day_num = sort(unique(sub$day_num)))
+        newdat$pred  <- predict(fit, newdata = newdat, type = "response")
+        newdat$group <- g
+        newdat$day_id <- match(newdat$day_num, sort(unique(data$day_num)))
+        newdat
+      })
+    )
+    
+    ggplot(data, aes(x = day_id, y = .data[[yvar]], fill = group)) +
+      
+      geom_boxplot(
+        aes(group = interaction(day_id, group)),
+        position = position_dodge(width = dodge_w),
+        width = 0.5,
+        outlier.shape = NA,
+        alpha = 0.9,
+        color = "#263238",
+        linewidth = 0.5
+      ) +
+      
+      geom_jitter(
+        aes(color = group),
+        position = position_jitterdodge(
+          jitter.width = 0.04,
+          dodge.width = dodge_w
+        ),
+        size = 2.0,
+        alpha = 0.7,
+        show.legend = FALSE
+      ) +
+      
+      geom_smooth(
+        data = pred_df,
+        aes(x = day_id, y = pred, color = group, group = group),
+        method = "lm",
+        se = FALSE,
+        alpha = 0.75,
+        linewidth = 1.0,
+        inherit.aes = FALSE
+      ) +
+      
+      scale_fill_manual(values = fill_colors) +
+      scale_color_manual(values = fill_colors) +
+      scale_x_continuous(
+        breaks = seq_along(day_levels),
+        labels = day_levels
+      ) +
+      labs(x = "", y = ylab_text) +
+      theme_bw(base_size = 16) +
+      theme(
+        panel.grid = element_blank(),
+        legend.position = "none",
+        axis.text = element_text(size = 16, color = "black"),
+        axis.title = element_text(size = 16, color = "black")
+      )
+  }
+  
+  # 4张图
+  p1 <- plot_box_jitter_glm_equalx(data_1, "Es", "Es", mycolors_1)
+  p2 <- plot_box_jitter_glm_equalx(data_1, "pH", "pH", mycolors_1)
+  p3 <- plot_box_jitter_glm_equalx(data_2, "Es", "Es", mycolors_2)
+  p4 <- plot_box_jitter_glm_equalx(data_2, "pH", "pH", mycolors_2)
+  
+
+  
+  (p1 | p3 | p2 | p4) 
+  
+  ggsave(filename = "~/Desktop/replot/culture/siderophore-experi/plot-data/ks_es-all.pdf", width = 12,height = 3)
+
+  
+  
+  library(dplyr)
+  
+  mydata <- read.delim(
+    '~/Desktop/replot/culture/siderophore-experi/plot-data/es-ph-wt-5-10.txt',
+    stringsAsFactors = FALSE,
+    check.names = FALSE,
+    header = TRUE,
+    sep = "\t"
+  )
+  
+  # group 顺序
+  mydata$group <- factor(
+    mydata$group,
+    levels = c("NC", "wt-5", "wt-10", "wt3-5", "wt3-10")
+  )
+  
+  # day 转真实数值
+  mydata$day_num <- as.numeric(as.character(mydata$day))
+  # 如果 day 不是纯数字，比如 d21/d42/d63/d120，用下面这句替代上一句：
+  # mydata$day_num <- as.numeric(gsub("[^0-9.]", "", as.character(mydata$day)))
+  
+  # 两套数据
+  data_1 <- mydata %>%
+    filter(group %in% c("NC", "wt-5", "wt-10")) %>%
+    mutate(
+      panel = "wt",
+      group = factor(group, levels = c("NC", "wt-5", "wt-10"))
+    )
+  
+  data_2 <- mydata %>%
+    filter(group %in% c("NC", "wt3-5", "wt3-10")) %>%
+    mutate(
+      panel = "wt3",
+      group = factor(group, levels = c("NC", "wt3-5", "wt3-10"))
+    )
+  
+  all_data <- bind_rows(data_1, data_2)
+  
+  # 单个模型提取统计量的函数
+  get_lm_stats <- function(df, response_var) {
+    fit <- lm(as.formula(paste(response_var, "~ day_num")), data = df)
+    sm <- summary(fit)
+    
+    data.frame(
+      slope     = unname(coef(fit)["day_num"]),
+      p_value   = sm$coefficients["day_num", "Pr(>|t|)"],
+      r_squared = sm$r.squared
+    )
+  }
+  
+  # 计算 Es 和 pH 各组统计结果
+  res_es <- all_data %>%
+    group_by(panel, group) %>%
+    group_modify(~ get_lm_stats(.x, "Es")) %>%
+    ungroup() %>%
+    mutate(variable = "Es")
+  
+  res_ph <- all_data %>%
+    group_by(panel, group) %>%
+    group_modify(~ get_lm_stats(.x, "pH")) %>%
+    ungroup() %>%
+    mutate(variable = "pH")
+  
+  # 合并成一张表
+  res_table <- bind_rows(res_es, res_ph) %>%
+    select(variable, panel, group, slope, p_value, r_squared) %>%
+    mutate(
+      slope     = round(slope, 4),
+      p_value   = signif(p_value, 3),
+      r_squared = round(r_squared, 4)
+    ) %>%
+    arrange(variable, panel, group)
+  
+  print(res_table)
+```

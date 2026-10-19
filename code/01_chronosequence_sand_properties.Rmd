@@ -1,0 +1,2113 @@
+---
+title: "Desert restoration project -- Part 1: Field chronosequence and sand-matrix properties"
+author: "Qiong_Chen"
+date: "2026-08-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+source("00_setup.R")
+```
+
+# 1. Field chronosequence and sand-matrix properties
+
+## 1.1 Sand physicochemical properties
+
+```{r sand-physicochemical-properties}
+# Figure 1C
+# 1) data input
+df <- read.delim('~/Desktop/replot/metadata_nutrients/SD-SI.txt',
+                 stringsAsFactors = FALSE, check.names = FALSE,
+                 header = TRUE, sep = "\t")
+df <- df[, 1:46]
+df$Group <- as.character(df$Group)
+
+
+# 2) Variable lists + Category
+
+vars_physical   <- c("D50","Silt","Sand","Gravel","Ks")
+vars_biological <- c("FVC","DNA")
+
+meta_cols <- c("SampleID","SeqID","Group","Planted_years","When_planted","Kind","Type","Soil_size_mean")
+vars_all <- setdiff(colnames(df), meta_cols)
+vars_chemical <- setdiff(vars_all, c(vars_physical, vars_biological))
+
+vars <- unique(c(vars_biological, vars_physical, vars_chemical))
+vars <- vars[vars %in% colnames(df)]
+
+var_category <- tibble(
+  variable = vars,
+  Category = case_when(
+    variable %in% vars_biological ~ "Biological",
+    variable %in% vars_physical   ~ "Physical",
+    TRUE                          ~ "Chemical"
+  )
+) %>%
+  mutate(Category = factor(Category, levels = c("Biological","Chemical","Physical")))
+
+
+# 3) Long table + z-score (per variable across ALL samples)
+
+dat_long <- df %>%
+  select(Group, all_of(vars)) %>%
+  pivot_longer(cols = all_of(vars), names_to = "variable", values_to = "value") %>%
+  mutate(value = suppressWarnings(as.numeric(value))) %>%
+  left_join(var_category, by = "variable") %>%
+  group_by(variable) %>%
+  mutate(
+    mu  = mean(value, na.rm = TRUE),
+    sdv = sd(value, na.rm = TRUE),
+    z   = ifelse(is.na(sdv) | sdv == 0, NA_real_, (value - mu) / sdv)
+  ) %>%
+  ungroup()
+
+
+# 4) GLM trend within SI (11–17): beta + p + adjR2 + BH
+#    !!! use z for GLM (lm(z ~ Year)) to make beta comparable
+
+si_years <- c("11","12","14","15","17")
+min_total_n <- 12
+min_years   <- 3
+
+glm_res <- dat_long %>%
+  filter(Group %in% si_years) %>%
+  mutate(Year = as.numeric(Group)) %>%
+  group_by(Category, variable) %>%
+  group_modify(~{
+    d <- .x %>% filter(!is.na(z), !is.na(Year))   # <-- GLM on z
+    n_eff  <- nrow(d)
+    n_year <- n_distinct(d$Year)
+    if (n_eff < min_total_n || n_year < min_years) {
+      return(tibble(n = n_eff, n_year = n_year, beta = NA_real_, p = NA_real_, adj_r2 = NA_real_))
+    }
+    fit <- tryCatch(lm(z ~ Year, data = d), error = function(e) NULL)  # <-- GLM on z
+    if (is.null(fit)) {
+      return(tibble(n = n_eff, n_year = n_year, beta = NA_real_, p = NA_real_, adj_r2 = NA_real_))
+    }
+    sm <- summary(fit)
+    beta  <- unname(coef(fit)["Year"])
+    pval  <- sm$coefficients["Year","Pr(>|t|)"]
+    ar2   <- unname(sm$adj.r.squared)
+    tibble(n = n_eff, n_year = n_year, beta = beta, p = pval, adj_r2 = ar2)
+  }) %>%
+  ungroup()
+
+glm_res <- glm_res %>%
+  mutate(p_adj = NA_real_) %>%
+  { idx <- which(!is.na(.$p)); .$p_adj[idx] <- p.adjust(.$p[idx], method = "BH"); . } %>%
+  mutate(
+    trend = case_when(
+      !is.na(p_adj) & p_adj < 0.05 & beta > 0 ~ "Increasing",
+      !is.na(p_adj) & p_adj < 0.05 & beta < 0 ~ "Decreasing",
+      TRUE                                    ~ "NotSig"
+    ),
+    abs_beta = abs(replace_na(beta, 0))
+  )
+
+
+# 5) Ordering: Category then |beta| desc (NO inc/dec/ns grouping now)
+
+
+trend_rank <- c("Increasing" = 1, "Decreasing" = 2, "NotSig" = 3)
+
+order_tbl <- glm_res %>%
+  mutate(trend_rank = trend_rank[trend]) %>%
+  arrange(Category, trend_rank, desc(abs_beta), variable)
+
+var_levels <- order_tbl %>% pull(variable)
+
+
+
+# 6) Heatmap aggregation: median(z) per Group + Δ(17-SD)
+
+group_levels <- c("SD","11","12","14","15","17")
+min_n_per_group <- 3
+
+agg <- dat_long %>%
+  filter(Group %in% group_levels) %>%
+  group_by(Category, variable, Group) %>%
+  summarise(
+    n_eff = sum(!is.na(z)),
+    z_med = ifelse(n_eff >= min_n_per_group, median(z, na.rm = TRUE), NA_real_),
+    .groups = "drop"
+  ) %>%
+  mutate(Group = factor(Group, levels = group_levels))
+
+agg_wide <- agg %>%
+  select(Category, variable, Group, z_med) %>%
+  pivot_wider(names_from = Group, values_from = z_med)
+
+agg_delta <- agg_wide %>%
+  transmute(Category, variable, Group = "Δ(17-SD)", z_med = `17` - SD)
+
+heat_df <- bind_rows(
+  agg,
+  agg_delta %>% mutate(Group = factor(Group, levels = c(group_levels, "Δ(17-SD)")))
+) %>%
+  mutate(
+    Group    = factor(as.character(Group), levels = c(group_levels, "Δ(17-SD)")),
+    variable = factor(variable, levels = var_levels),
+    Category = factor(Category, levels = c("Biological","Chemical","Physical"))
+  )
+
+
+# 7) Wilcoxon SD vs SI17 (star on Δ cell) + BH
+
+min_wilcox_n_each <- 5
+
+wilcox_res <- dat_long %>%
+  filter(Group %in% c("SD","17")) %>%
+  mutate(G2 = factor(Group, levels = c("SD","17"))) %>%
+  group_by(Category, variable) %>%
+  group_modify(~{
+    d <- .x %>% filter(!is.na(value))
+    n_sd <- sum(d$G2 == "SD")
+    n_17 <- sum(d$G2 == "17")
+    if (n_sd < min_wilcox_n_each || n_17 < min_wilcox_n_each) {
+      return(tibble(n_sd = n_sd, n_17 = n_17, p = NA_real_))
+    }
+    wt <- suppressWarnings(wilcox.test(value ~ G2, data = d, exact = FALSE))
+    tibble(n_sd = n_sd, n_17 = n_17, p = wt$p.value)
+  }) %>%
+  ungroup() %>%
+  mutate(p_adj = NA_real_) %>%
+  { idx <- which(!is.na(.$p)); .$p_adj[idx] <- p.adjust(.$p[idx], method = "BH"); . } %>%
+  mutate(star = ifelse(!is.na(p_adj) & p_adj < 0.05, "*", ""))
+
+star_df <- wilcox_res %>%
+  mutate(variable = factor(variable, levels = var_levels),
+         Category = factor(Category, levels = c("Biological","Chemical","Physical"))) %>%
+  filter(star == "*") %>%
+  transmute(
+    Category,
+    variable,
+    Group  = factor("Δ(17-SD)", levels = levels(heat_df$Group)),
+    label  = star
+  )
+
+
+# 8) Row label coloring by GLM trend 
+
+col_inc <- "#E3AF2E"
+col_dec <- "#14A6B1"
+col_ns  <- "#222222"
+
+label_df <- glm_res %>%
+  mutate(
+    variable = factor(variable, levels = var_levels),
+    lab_col = case_when(
+      trend == "Increasing" ~ col_inc,
+      trend == "Decreasing" ~ col_dec,
+      TRUE                  ~ col_ns
+    ),
+    label = sprintf("<span style='color:%s'>%s</span>", lab_col, as.character(variable))
+  ) %>%
+  arrange(variable)
+
+label_map <- setNames(label_df$label, as.character(label_df$variable))
+missing_vars <- setdiff(levels(heat_df$variable), names(label_map))
+if (length(missing_vars) > 0) {
+  for (v in missing_vars) label_map[[v]] <- sprintf("<span style='color:%s'>%s</span>", col_ns, v)
+}
+
+
+# 9) Plot A: Heatmap
+
+fill_pal <- colorRampPalette(c("#80cbc4", "#F3F6EC", "#ffa000"))(100)
+
+p_heat <- ggplot(heat_df, aes(x = Group, y = variable, fill = z_med)) +
+  geom_tile() +
+  geom_text(
+    data = star_df,
+    aes(x = Group, y = variable, label = label),
+    inherit.aes = FALSE,
+    size = 4.2,
+    vjust = 0.5, hjust = 0.5,
+    color = "black"
+  ) +
+  facet_grid(Category ~ ., scales = "free_y", space = "free_y") +
+  scale_x_discrete(position = "top") +
+  scale_y_discrete(labels = function(x) label_map[x]) +
+  scale_fill_gradientn(
+    colours = fill_pal,
+    limits = c(-3, 3),
+    oob = scales::squish,
+    name = "Median z-score"
+  ) +
+  labs(x = NULL, y = NULL) +
+  theme_classic(base_size = 12) +
+  theme(
+    axis.text.x = element_text(color = "black"),
+    axis.text.y = ggtext::element_markdown(color = "black"),
+    axis.ticks.y = element_blank(),
+    strip.background = element_blank(),
+    strip.text.y = element_text(angle = 0, face = "bold"),
+    panel.spacing = unit(0.6, "lines"),
+    legend.position = "right"
+  )
+
+p_heat
+
+
+# 10) Plot B: Main Fig F (GLM bubble)
+#     x = beta coefficient; size = adj R^2
+
+f_df <- glm_res %>%
+  mutate(
+    variable = factor(variable, levels = var_levels),
+    Category = factor(Category, levels = c("Biological","Chemical","Physical")),
+    trend    = factor(trend, levels = c("Increasing","Decreasing","NotSig")),
+   # adj_r2   = ifelse(is.na(adj_r2) | adj_r2 < 0, NA_real_, adj_r2)
+  )
+
+p_F <- ggplot(f_df, aes(x = beta, y = variable)) +
+  geom_vline(xintercept = 0, linetype = 2, color = "grey30") +
+  geom_point(aes(size = adj_r2, color = trend), alpha = 0.95, na.rm = TRUE) +
+  facet_grid(Category ~ ., scales = "free_y", space = "free_y") +
+  scale_color_manual(
+    values = c("Increasing" = col_inc, "Decreasing" = col_dec, "NotSig" = col_ns),
+    name = NULL
+  ) +
+  scale_size_continuous(
+    range = c(1.6, 8),
+    name = expression("Adj. " * R^2)
+  ) +
+  labs(x = "SI trend (GLM beta coefficient)", y = NULL) +
+  theme_classic(base_size = 12) +
+  theme(
+    strip.background = element_blank(),
+    strip.text.y = element_text(angle = 0, face = "bold"),
+    axis.ticks.y = element_blank(),
+    legend.position = "right"
+  )
+
+p_F
+```
+
+
+## 1.2 D50 and hydraulic conductivity
+
+```{r field-particle-size-D50-ks}
+# Figure 1C
+df <- read.delim('~/Desktop/replot/metadata_nutrients/SD-SI.txt',
+                 stringsAsFactors = FALSE, check.names = FALSE,
+                 header = TRUE, sep = "\t")
+df_selected <- df %>%
+  dplyr::select(Group, D50, Ks) %>%
+  dplyr::filter(Group %in% c("SD", "17"))
+
+group_colors <- c(
+  "SD" = "#F4A64E",
+  "17" = "#526F43"
+)
+
+common_theme <- theme_classic(base_size = 16) +
+  theme(
+    text = element_text(color = "black"),
+    axis.text = element_text(color = "black"),
+    axis.title = element_text(color = "black"),
+    legend.position = "none"
+  )
+
+# D50
+
+p_d50 <- ggplot(
+  field_size,
+  aes(x = Group, y = D50)
+) +
+  geom_boxplot(
+    aes(fill = Group),
+    width = 0.52,
+    outlier.shape = NA,
+    color = "#333333",
+    linewidth = 0.45,
+    alpha = 0.70
+  ) +
+  ggbeeswarm::geom_quasirandom(
+    aes(color = Group),
+    width = 0.16,
+    size = 1.8,
+    alpha = 0.75
+  ) +
+  stat_compare_means(
+    comparisons = list(c("SD", "17")),
+    method = "wilcox.test",
+    method.args = list(exact = FALSE),
+    label = "p.signif",
+    label.y.npc = 0.93,
+    size = 5,
+    tip.length = 0.02,
+    bracket.size = 0.45
+  ) +
+  scale_fill_manual(values = group_colors) +
+  scale_color_manual(values = group_colors) +
+  scale_y_continuous(
+    expand = expansion(
+      mult = c(0.05, 0.18)
+    )
+  ) +
+  labs(
+    x = NULL,
+    y = expression(D[50]~"("*mu*"m)")
+  ) +
+  common_theme +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    plot.margin = margin(5, 5, 0, 5)
+  )
+
+
+# Ks
+
+
+p_Ks <- ggplot(
+  field_size,
+  aes(x = Group, y = Ks)
+) +
+  geom_boxplot(
+    aes(fill = Group),
+    width = 0.52,
+    outlier.shape = NA,
+    color = "#333333",
+    linewidth = 0.45,
+    alpha = 0.70
+  ) +
+  ggbeeswarm::geom_quasirandom(
+    aes(color = Group),
+    width = 0.16,
+    size = 1.8,
+    alpha = 0.75
+  ) +
+  stat_compare_means(
+    comparisons = list(c("SD", "17")),
+    method = "wilcox.test",
+    method.args = list(exact = FALSE),
+    label = "p.signif",
+    label.y.npc = 0.93,
+    size = 5,
+    tip.length = 0.02,
+    bracket.size = 0.45
+  ) +
+  scale_fill_manual(values = group_colors) +
+  scale_color_manual(values = group_colors) +
+  scale_y_continuous(
+    expand = expansion(
+      mult = c(0.05, 0.18)
+    )
+  ) +
+  labs(
+    x = NULL,
+    y = expression(
+      K[s]~"(m"~day^{-1}*")"
+    )
+  ) +
+  common_theme +
+  theme(
+    axis.text.x = element_text(size = 13),
+    plot.margin = margin(0, 5, 5, 5)
+  )
+
+# Combine
+
+field_size_figure <- p_d50 /
+  p_Ks +
+  plot_layout(heights = c(1, 1))
+
+print(field_size_figure)
+
+```
+
+## 1.3 Mineral composition and PCA
+
+```{r mineral-pca}
+# Figure 1D
+# Figure S1D–F
+
+   # 1. Read data
+
+    mydata <- read.delim(
+      "~/Desktop/replot/culture/field-experiment/XRD/2020_field.txt",
+      stringsAsFactors = FALSE,
+      check.names = FALSE,
+      header = TRUE,
+      sep = "\t"
+    )
+    
+    str(mydata)
+    print(mydata)
+    
+   # 2. Basic data preparation
+
+    
+    # Ensure that the grouping variable is character
+    mydata$year <- trimws(as.character(mydata$year))
+    
+    # Mineral variables:
+    # all columns other than "year"
+    mineral_cols <- setdiff(colnames(mydata), "year")
+    
+    # Convert mineral variables to numeric
+    mydata[mineral_cols] <- lapply(
+      mydata[mineral_cols],
+      function(x) as.numeric(as.character(x))
+    )
+    
+    # Check missing values
+    if (anyNA(mydata[mineral_cols])) {
+      stop(
+        "Missing or non-numeric values were found in mineral columns. ",
+        "Please check the input table."
+      )
+    }
+    
+    # Check negative values
+    if (any(as.matrix(mydata[mineral_cols]) < 0)) {
+      stop("Negative mineral abundance values were detected.")
+    }
+    
+    # Add sample ID
+    mydata$sample_id <- paste0("Sample_", seq_len(nrow(mydata)))
+    
+    # Numeric restoration age;
+    # SD is deliberately coded as NA, not year 0
+    mydata$restoration_age <- ifelse(
+      mydata$year == "SD",
+      NA_real_,
+      as.numeric(mydata$year)
+    )
+    
+    # Ordered display group
+    group_levels <- c(
+      "SD",
+      sort(
+        unique(mydata$year[mydata$year != "SD"])
+      )
+    )
+    
+    mydata$group <- factor(
+      mydata$year,
+      levels = group_levels
+    )
+    
+    # Examine sums of mineral percentages
+    mydata$mineral_sum <- rowSums(mydata[mineral_cols])
+    
+    print(
+      mydata %>%
+        select(sample_id, year, mineral_sum)
+    )
+    
+    summary(mydata$mineral_sum)
+    
+    
+ 
+    # 3. Closure to proportions
+  
+    # Even if the rows already sum to approximately 100,
+    # close each sample to a constant sum of 1.
+    
+    mineral_matrix <- as.matrix(mydata[mineral_cols])
+    
+    mineral_prop <- mineral_matrix /
+      rowSums(mineral_matrix)
+    
+    
+    # 4. CLR transformation
+    
+    
+    clr_transform <- function(x) {
+      log(x) - mean(log(x))
+    }
+    
+    mineral_clr <- t(
+      apply(
+        mineral_prop,
+        1,
+        clr_transform
+      )
+    )
+    
+    colnames(mineral_clr) <- mineral_cols
+    rownames(mineral_clr) <- mydata$sample_id
+    
+    # Check CLR row sums; should be approximately zero
+    print(rowSums(mineral_clr))
+    
+   
+    # 5. PCA on CLR-transformed data
+    
+    # Do not scale again:
+    # CLR values are already expressed on a common log-ratio scale.
+    
+    pca_fit <- prcomp(
+      mineral_clr,
+      center = TRUE,
+      scale. = FALSE
+    )
+    
+    pca_variance <- 100 *
+      pca_fit$sdev^2 /
+      sum(pca_fit$sdev^2)
+    
+    pc1_variance <- pca_variance[1]
+    pc2_variance <- pca_variance[2]
+    
+    cat(
+      "\nPC1 explained variance:",
+      round(pc1_variance, 2),
+      "%\n"
+    )
+    
+    cat(
+      "PC2 explained variance:",
+      round(pc2_variance, 2),
+      "%\n"
+    )
+    
+    # PCA scores
+    pca_scores <- as.data.frame(pca_fit$x[, 1:2])
+    
+    pca_scores$sample_id <- rownames(pca_scores)
+    
+    pca_scores <- pca_scores %>%
+      left_join(
+        mydata %>%
+          select(
+            sample_id,
+            year,
+            group,
+            restoration_age
+          ),
+        by = "sample_id"
+      )
+    
+    # PCA loadings
+    pca_loadings <- as.data.frame(
+      pca_fit$rotation[, 1:2]
+    )
+    
+    pca_loadings$mineral <- rownames(pca_loadings)
+    
+    print(
+      pca_loadings %>%
+        arrange(desc(abs(PC1)))
+    )
+    
+    
+  
+    # 6. Orient PC1 for interpretation
+   
+    # The sign of a PCA axis is mathematically arbitrary.
+    # Here, PC1 is oriented so that increasing PC1 corresponds
+    # to decreasing quartz contribution.
+    #
+    # Thus, positive PC1 generally represents a shift away from
+    # quartz dominance and toward relatively greater contributions
+    # from the other minerals.
+    
+    if ("Quartz" %in% pca_loadings$mineral) {
+      
+      quartz_loading <- pca_loadings$PC1[
+        pca_loadings$mineral == "Quartz"
+      ][1]
+      
+      if (quartz_loading > 0) {
+        
+        pca_scores$PC1 <- -pca_scores$PC1
+        pca_loadings$PC1 <- -pca_loadings$PC1
+        
+        message(
+          "PC1 direction was reversed so that higher PC1 ",
+          "corresponds to lower relative quartz contribution."
+        )
+      }
+    }
+    
+    
+    
+    # 7. Overall mineral-composition test
+   
+    # Euclidean distance on CLR data = Aitchison distance
+    
+    set.seed(123)
+    
+    permanova_result <- adonis2(
+      mineral_clr ~ group,
+      data = mydata,
+      method = "euclidean",
+      permutations = 9999
+    )
+    
+    print(permanova_result)
+    
+    permanova_p <- permanova_result$`Pr(>F)`[1]
+    permanova_r2 <- permanova_result$R2[1]
+    
+    
+  
+    # 8. Check multivariate dispersion
+   
+    # PERMANOVA can be influenced by unequal within-group dispersion.
+    
+    aitchison_distance <- dist(
+      mineral_clr,
+      method = "euclidean"
+    )
+    
+    dispersion_fit <- betadisper(
+      aitchison_distance,
+      mydata$group
+    )
+    
+    set.seed(123)
+    
+    dispersion_test <- permutest(
+      dispersion_fit,
+      permutations = 9999
+    )
+    
+    print(dispersion_test)
+    
+    
+ 
+    # 9. Restoration-age models
+    
+    # SD is excluded from these models because it is an unrestored
+    # reference, not necessarily the actual year-zero state of the
+    # restored sites.
+    
+    restored_scores <- pca_scores %>%
+      filter(!is.na(restoration_age))
+    
+    # Linear model
+    model_linear <- lm(
+      PC1 ~ restoration_age,
+      data = restored_scores
+    )
+    
+    # Quadratic model
+    model_quadratic <- lm(
+      PC1 ~ restoration_age +
+        I(restoration_age^2),
+      data = restored_scores
+    )
+    
+    summary(model_linear)
+    summary(model_quadratic)
+    
+    anova(model_linear, model_quadratic)
+    
+    # Extract statistics
+    linear_summary <- summary(model_linear)
+    quadratic_summary <- summary(model_quadratic)
+    
+    linear_p <- coef(linear_summary)[
+      "restoration_age",
+      "Pr(>|t|)"
+    ]
+    
+    linear_r2 <- linear_summary$adj.r.squared
+    
+    quadratic_p <- coef(quadratic_summary)[
+      "I(restoration_age^2)",
+      "Pr(>|t|)"
+    ]
+    
+    quadratic_r2 <- quadratic_summary$adj.r.squared
+    
+    cat(
+      "\nLinear trend P =",
+      signif(linear_p, 4),
+      "\n"
+    )
+    
+    cat(
+      "Linear adjusted R2 =",
+      round(linear_r2, 3),
+      "\n"
+    )
+    
+    cat(
+      "Quadratic term P =",
+      signif(quadratic_p, 4),
+      "\n"
+    )
+    
+    cat(
+      "Quadratic adjusted R2 =",
+      round(quadratic_r2, 3),
+      "\n"
+    )
+    
+    
+  
+    # 10. Model-selection rule
+   
+    # Use the quadratic curve only if:
+    # 1. the quadratic term is significant at P < 0.05, and
+    # 2. adjusted R2 is improved relative to the linear model.
+    #
+    # Otherwise use the simpler linear trend.
+    
+    use_quadratic <- (
+      !is.na(quadratic_p) &&
+        quadratic_p < 0.05 &&
+        quadratic_r2 > linear_r2
+    )
+    
+    if (use_quadratic) {
+      
+      selected_model <- model_quadratic
+      selected_model_name <- "Quadratic"
+      
+      trend_label <- paste0(
+        "Restoration-age pattern: quadratic\n",
+        "P", "\u209B\u2092", "\u00B2", " = ",
+        format.pval(
+          quadratic_p,
+          digits = 2,
+          eps = 0.001
+        ),
+        ", adj. R\u00B2 = ",
+        sprintf("%.2f", quadratic_r2)
+      )
+      
+    } else {
+      
+      selected_model <- model_linear
+      selected_model_name <- "Linear"
+      
+      trend_label <- paste0(
+        "Restoration-age trend: linear\n",
+        "P = ",
+        format.pval(
+          linear_p,
+          digits = 2,
+          eps = 0.001
+        ),
+        ", adj. R\u00B2 = ",
+        sprintf("%.2f", linear_r2)
+      )
+    }
+    
+    cat(
+      "\nSelected display model:",
+      selected_model_name,
+      "\n"
+    )
+    
+   
+    # 11. Prediction data
+   
+    prediction_data <- data.frame(
+      restoration_age = seq(
+        min(restored_scores$restoration_age),
+        max(restored_scores$restoration_age),
+        length.out = 300
+      )
+    )
+    
+    prediction_values <- predict(
+      selected_model,
+      newdata = prediction_data,
+      interval = "confidence",
+      level = 0.95
+    )
+    
+    prediction_data <- cbind(
+      prediction_data,
+      as.data.frame(prediction_values)
+    )
+    
+    
+    
+    # 12. Group summaries
+   
+    pc1_summary <- pca_scores %>%
+      group_by(group, year, restoration_age) %>%
+      summarise(
+        n = n(),
+        mean_PC1 = mean(PC1),
+        sd_PC1 = sd(PC1),
+        se_PC1 = sd_PC1 / sqrt(n),
+        .groups = "drop"
+      )
+    
+    print(pc1_summary)
+    
+    
+
+    # 13. Plotting x coordinates
+    
+    # Put SD to the left with a clear visual gap.
+    # SD is not treated as restoration year zero.
+    
+    minimum_restored_age <- min(
+      restored_scores$restoration_age
+    )
+    
+    sd_x_position <- minimum_restored_age - 2.2
+    
+    pca_scores$plot_x <- ifelse(
+      pca_scores$year == "SD",
+      sd_x_position,
+      pca_scores$restoration_age
+    )
+    
+    pc1_summary$plot_x <- ifelse(
+      pc1_summary$year == "SD",
+      sd_x_position,
+      pc1_summary$restoration_age
+    )
+    
+    
+    
+    # 14. Colours
+    
+    age_colours <- c(
+      "SD" = "#E69F00",
+      "11" = "#D9E878",
+      "12" = "#B7CC63",
+      "14" = "#8DAA55",
+      "15" = "#718C47",
+      "17" = "#4F6F3B"
+    )
+    
+  
+    # 15. Statistical annotation
+
+    overall_label <- paste0(
+      "Overall composition: ",
+      "PERMANOVA ",
+      "P",
+      " = ",
+      format.pval(
+        permanova_p,
+        digits = 2,
+        eps = 0.001
+      ),
+      ", R\u00B2 = ",
+      sprintf("%.2f", permanova_r2)
+    )
+    
+    # Because plotmath and ordinary strings are awkward to combine,
+    # use a clean plain-text label in the plot.
+    overall_label_plain <- paste0(
+      "Overall composition: PERMANOVA P ",
+      ifelse(permanova_p < 0.001, "< 0.001", paste0("= ", signif(permanova_p, 2))),
+      ", R\u00B2 = ",
+      sprintf("%.2f", permanova_r2)
+    )
+    
+    
+    # 16. Main one-panel figure
+
+    set.seed(123)
+    
+    
+    
+    pc1_y_min <- min(
+      c(
+        pca_scores$PC1,
+        prediction_data$lwr
+      ),
+      na.rm = TRUE
+    )
+    
+    pc1_y_max <- max(
+      c(
+        pca_scores$PC1,
+        prediction_data$upr
+      ),
+      na.rm = TRUE
+    )
+    
+    pc1_y_range <- pc1_y_max - pc1_y_min
+    
+    # Add space for annotations
+    plot_y_min <- pc1_y_min - 0.12 * pc1_y_range
+    plot_y_max <- pc1_y_max + 0.23 * pc1_y_range
+    
+    
+    set.seed(123)
+    
+    main_plot <- ggplot() +
+      
+      # Confidence interval for restoration-age model
+      geom_ribbon(
+        data = prediction_data,
+        aes(
+          x = restoration_age,
+          ymin = lwr,
+          ymax = upr
+        ),
+        fill = "#718C47",
+        alpha = 0.15
+      ) +
+      
+      # Linear fitted trajectory
+      geom_line(
+        data = prediction_data,
+        aes(
+          x = restoration_age,
+          y = fit
+        ),
+        colour = "#3F5633",
+        linewidth = 1.05
+      ) +
+      
+      # Individual samples
+      geom_point(
+        data = pca_scores,
+        aes(
+          x = plot_x,
+          y = PC1,
+          fill = group
+        ),
+        shape = 21,
+        size = 3.2,
+        stroke = 0.55,
+        colour = "black",
+        alpha = 0.85,
+        position = position_jitter(
+          width = 0.08,
+          height = 0,
+          seed = 123
+        )
+      ) +
+      
+      # Mean ± SE
+      geom_errorbar(
+        data = pc1_summary,
+        aes(
+          x = plot_x,
+          ymin = mean_PC1 - se_PC1,
+          ymax = mean_PC1 + se_PC1
+        ),
+        width = 0.14,
+        linewidth = 0.65,
+        colour = "black"
+      ) +
+      
+      # Group means
+      geom_point(
+        data = pc1_summary,
+        aes(
+          x = plot_x,
+          y = mean_PC1
+        ),
+        shape = 23,
+        size = 3.2,
+        stroke = 0.75,
+        fill = "white",
+        colour = "black"
+      ) +
+      
+      # Separate SD from the restored chronosequence
+      geom_vline(
+        xintercept = minimum_restored_age - 1.1,
+        linetype = "dotted",
+        linewidth = 0.55,
+        colour = "grey55"
+      ) +
+      
+      # Restoration-region label
+      # annotate(
+      #   "text",
+      #   x = mean(range(restored_scores$restoration_age)),
+      #   y = plot_y_max,
+      #   label = "Restoration chronosequence",
+      #   vjust = 1.15,
+      #   size = 3.45,
+      #   colour = "grey20"
+      # ) +
+      # 
+      # Statistical annotation
+      # annotate(
+      #   "text",
+      #   x = 11.05,
+      #   y = plot_y_max - 0.055 * pc1_y_range,
+      #   label = paste0(
+      #     "PERMANOVA: P < 0.001, R\u00B2 = 0.60\n",
+      #     "Age trend: P = 0.022, adj. R\u00B2 = 0.29"
+      #   ),
+      #   hjust = 0,
+      #   vjust = 1,
+      #   size = 3.15,
+      #   lineheight = 1.15,
+      #   colour = "black"
+      # ) +
+      
+      # Positive-PC1 interpretation
+      # annotate(
+      #   "text",
+      #   x = Inf,
+      #   y = pc1_y_max,
+      #   label = "Greater relative\nmicrocline contribution",
+      #   hjust = 1.04,
+      #   vjust = 1.05,
+      #   size = 2.9,
+      #   lineheight = 0.95,
+      #   colour = "#3F5633"
+      # ) +
+      
+      # Negative-PC1 interpretation
+      # annotate(
+      #   "text",
+      #   x = Inf,
+      #   y = pc1_y_min,
+      #   # label = paste0(
+      #   #   "Greater relative quartz, albite,\n",
+      #   #   "and muscovite contributions"
+      #   # ),
+      #   hjust = 1.04,
+      #   vjust = -0.10,
+      #   size = 2.9,
+      #   lineheight = 0.95,
+      #   colour = "grey35"
+      # ) +
+      
+      scale_fill_manual(
+        values = age_colours,
+        drop = FALSE
+      ) +
+      
+      scale_x_continuous(
+        breaks = c(
+          sd_x_position,
+          sort(unique(restored_scores$restoration_age))
+        ),
+        labels = c(
+          "SD",
+          sort(unique(restored_scores$restoration_age))
+        ),
+        expand = expansion(
+          mult = c(0.07, 0.08)
+        )
+      ) +
+      
+      scale_y_continuous(
+        limits = c(
+          plot_y_min,
+          plot_y_max
+        ),
+        expand = expansion(
+          mult = c(0, 0)
+        )
+      ) +
+      
+      labs(
+        x = "Restoration age (years)",
+        y = paste0(
+          "Mineral composition PC1 (",
+          sprintf("%.1f", pc1_variance),
+          "% variance)"
+        )
+      ) +
+      
+      theme_classic(
+        base_size = 16
+      ) +
+      
+      theme(
+        axis.title = element_text(
+          colour = "black",
+          size = 16
+        ),
+        axis.text = element_text(
+          colour = "black",
+          size = 16
+        ),
+        axis.line = element_line(
+          colour = "black",
+          linewidth = 0.55
+        ),
+        axis.ticks = element_line(
+          colour = "black",
+          linewidth = 0.55
+        ),
+        legend.position = "none",
+        plot.margin = margin(
+          t = 5,
+          r = 6,
+          b = 5,
+          l = 5
+        )
+      )
+    
+    print(main_plot)
+    
+
+    # figure s1D-F for XRD mineral composition
+    #
+    # A. CLR-PCA ordination, labeled as S1D
+    # B. PC1 mineral loadings, labeled as S1E
+    # C. Original mineral proportions across restoration stages, labeled as S1F
+    # This code continues from the previous main-figure script.
+    
+    # 1. Prepare CLR data in long format
+
+    
+    clr_data <- as.data.frame(mineral_clr)
+    
+    clr_data$sample_id <- rownames(clr_data)
+    
+    clr_data <- clr_data %>%
+      left_join(
+        mydata %>%
+          select(
+            sample_id,
+            year,
+            group,
+            restoration_age
+          ),
+        by = "sample_id"
+      )
+    
+    clr_long <- clr_data %>%
+      pivot_longer(
+        cols = all_of(mineral_cols),
+        names_to = "mineral",
+        values_to = "clr_value"
+      )
+    
+    clr_long$mineral <- factor(
+      clr_long$mineral,
+      levels = mineral_cols
+    )
+    
+    
+  
+    # 2. Statistical analysis of individual minerals
+
+    
+    # For each mineral:
+    # 1. overall difference among SD and all restored stages;
+    # 2. linear restoration-age trend using only 11–17-year sites;
+    # 3. BH correction across the five minerals.
+    
+    mineral_statistics <- clr_long %>%
+      group_by(mineral) %>%
+      group_modify(
+        ~{
+          
+          mineral_all <- .x
+          
+          mineral_restored <- .x %>%
+            filter(!is.na(restoration_age))
+          
+          # Overall group model
+          overall_model <- lm(
+            clr_value ~ group,
+            data = mineral_all
+          )
+          
+          overall_anova <- anova(overall_model)
+          
+          overall_p <- overall_anova[
+            "group",
+            "Pr(>F)"
+          ]
+          
+          # Linear restoration-age model
+          age_model <- lm(
+            clr_value ~ restoration_age,
+            data = mineral_restored
+          )
+          
+          age_model_summary <- summary(age_model)
+          
+          age_p <- coef(age_model_summary)[
+            "restoration_age",
+            "Pr(>|t|)"
+          ]
+          
+          age_beta <- coef(age_model_summary)[
+            "restoration_age",
+            "Estimate"
+          ]
+          
+          age_adj_r2 <- age_model_summary$adj.r.squared
+          
+          # Quadratic model, reported for checking only
+          quadratic_model <- lm(
+            clr_value ~ restoration_age +
+              I(restoration_age^2),
+            data = mineral_restored
+          )
+          
+          quadratic_summary <- summary(quadratic_model)
+          
+          quadratic_p <- coef(quadratic_summary)[
+            "I(restoration_age^2)",
+            "Pr(>|t|)"
+          ]
+          
+          quadratic_adj_r2 <- quadratic_summary$adj.r.squared
+          
+          tibble(
+            overall_p = overall_p,
+            age_beta = age_beta,
+            age_p = age_p,
+            age_adj_r2 = age_adj_r2,
+            quadratic_p = quadratic_p,
+            quadratic_adj_r2 = quadratic_adj_r2
+          )
+        }
+      ) %>%
+      ungroup() %>%
+      mutate(
+        overall_q = p.adjust(
+          overall_p,
+          method = "BH"
+        ),
+        age_q = p.adjust(
+          age_p,
+          method = "BH"
+        ),
+        quadratic_q = p.adjust(
+          quadratic_p,
+          method = "BH"
+        ),
+        trend_direction = case_when(
+          age_beta > 0 ~ "Positive",
+          age_beta < 0 ~ "Negative",
+          TRUE ~ "None"
+        )
+      )
+    
+    print(mineral_statistics)
+    
+    
+    # Save statistics
+    write.table(
+      mineral_statistics,
+      file = file.path(
+        output_directory,
+        "XRD_individual_mineral_statistics.tsv"
+      ),
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+    
+    
+    
+    # 3. Panel A: CLR-PCA ordination
+ 
+    # Group centroids
+    pca_centroids <- pca_scores %>%
+      group_by(
+        group,
+        year,
+        restoration_age
+      ) %>%
+      summarise(
+        PC1 = mean(PC1),
+        PC2 = mean(PC2),
+        .groups = "drop"
+      )
+    
+    # Temporal trajectory for restored sites only
+    restored_centroids <- pca_centroids %>%
+      filter(year != "SD") %>%
+      arrange(restoration_age)
+    
+    
+    panel_A <- ggplot(
+      pca_scores,
+      aes(
+        x = PC1,
+        y = PC2
+      )
+    ) +
+      
+      # Connect restored centroids chronologically
+      geom_path(
+        data = restored_centroids,
+        aes(
+          x = PC1,
+          y = PC2,
+          group = 1
+        ),
+        inherit.aes = FALSE,
+        colour = "grey35",
+        linewidth = 0.7,
+        arrow = arrow(
+          length = unit(0.12, "cm"),
+          type = "closed"
+        )
+      ) +
+      
+      # Individual samples
+      geom_point(
+        aes(
+          fill = group
+        ),
+        shape = 21,
+        size = 3.1,
+        stroke = 0.55,
+        colour = "black",
+        alpha = 0.85
+      ) +
+      
+      # Group centroids
+      geom_point(
+        data = pca_centroids,
+        aes(
+          x = PC1,
+          y = PC2
+        ),
+        inherit.aes = FALSE,
+        shape = 23,
+        size = 3.4,
+        stroke = 0.75,
+        fill = "white",
+        colour = "black"
+      ) +
+      
+      # Group labels
+      geom_text_repel(
+        data = pca_centroids,
+        aes(
+          x = PC1,
+          y = PC2,
+          label = year
+        ),
+        inherit.aes = FALSE,
+        size = 6.1,
+        colour = "black",
+        min.segment.length = 0,
+        box.padding = 0.25,
+        point.padding = 0.25,
+        seed = 123,
+        show.legend = FALSE
+      ) +
+      
+     # Statistical result
+      annotate(
+        "text",
+        x = Inf,
+        y = -Inf,
+        label = paste0(
+          "PERMANOVA: P < 0.001, R\u00B2 = 0.60\n",
+          "Dispersion: P = 0.293"
+        ),
+        hjust = 1.03,
+        vjust = -0.35,
+        size = 3.0,
+        lineheight = 1.1
+      ) +
+      
+      scale_fill_manual(
+        values = age_colours,
+        drop = FALSE
+      ) +
+      
+      labs(
+        x = paste0(
+          "PC1 (",
+          sprintf("%.1f", pc1_variance),
+          "%)"
+        ),
+        y = paste0(
+          "PC2 (",
+          sprintf("%.1f", pc2_variance),
+          "%)"
+        )
+      ) +
+      
+      coord_equal(
+        clip = "off"
+      ) +
+      
+      theme_classic(
+        base_size = 16
+      ) +
+      
+      theme(
+        axis.title = element_text(
+          size = 16,
+          colour = "black"
+        ),
+        axis.text = element_text(
+          size = 16,
+          colour = "black"
+        ),
+        panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.6),
+        legend.position = "none",
+        plot.margin = margin(
+          t = 10,
+          r = 12,
+          b = 10,
+          l = 10
+        )
+      )
+    panel_A
+    
+    
+   
+    # 4. Panel B: PC1 loadings
+  
+    
+    loading_plot_data <- pca_loadings %>%
+      select(
+        mineral,
+        PC1
+      ) %>%
+      mutate(
+        mineral = factor(
+          mineral,
+          levels = mineral[
+            order(PC1)
+          ]
+        ),
+        loading_direction = ifelse(
+          PC1 >= 0,
+          "Positive",
+          "Negative"
+        ),
+        loading_label = sprintf(
+          "%+.2f",
+          PC1
+        )
+      )
+    
+    
+    panel_B <- ggplot(
+      loading_plot_data,
+      aes(
+        x = PC1,
+        y = mineral,
+        fill = loading_direction
+      )
+    ) +
+      
+      geom_vline(
+        xintercept = 0,
+        linewidth = 0.55,
+        colour = "black"
+      ) +
+      
+      geom_col(
+        width = 0.66,
+        colour = "black",
+        linewidth = 0.35
+      ) +
+      
+      geom_text(
+        aes(
+          label = loading_label,
+          hjust = ifelse(
+            PC1 >= 0,
+            -0.12,
+            1.12
+          )
+        ),
+        size = 4.5,
+        colour = "black"
+      ) +
+      
+      scale_fill_manual(
+        values = c(
+          "Positive" = "#718C47",
+          "Negative" = "#B7B7B7"
+        )
+      ) +
+      
+      scale_x_continuous(
+        limits = c(
+          min(loading_plot_data$PC1) - 0.15,
+          max(loading_plot_data$PC1) + 0.15
+        ),
+        breaks = seq(
+          -0.6,
+          0.8,
+          by = 0.2
+        ),
+        expand = expansion(
+          mult = c(0, 0)
+        )
+      ) +
+      
+      labs(
+        x = "PC1 loading",
+        y = NULL
+      ) +
+      
+      theme_classic(
+        base_size = 16
+      ) +
+      
+      theme(
+        axis.title = element_text(
+          size = 16,
+          colour = "black"
+        ),
+        axis.text.x = element_text(
+          size = 16,
+          colour = "black", angle = 25, hjust = 0.8,vjust = 0.8
+        ),
+        axis.text.y = element_text(
+          size = 16,
+          colour = "black"
+        ),
+        axis.ticks.y = element_blank(),
+        legend.position = "none",
+        plot.margin = margin(
+          t = 7,
+          r = 22,
+          b = 8,
+          l = 7
+        )
+      )
+    panel_B
+    
+    
+  
+    # Panel C: Original mineral proportions
+    #
+    # Statistics:
+    # 1. Kruskal–Wallis:
+    #    SD + all restored stages as categorical groups
+    #
+    # 2. Linear regression:
+    #    restoration age as a continuous variable;
+    #    restored sites only (11–17 years)
+    #
+    # 3. BH correction:
+    #    separately across the five minerals
+    #
+    # Plot:
+    # - original mineral percentages
+    # - individual samples
+    # - mean ± SE
+    # - linear trend and 95% confidence interval
+ 
+
+   
+    # 1. Basic variables
+    
+    # All mineral columns
+    mineral_cols <- setdiff(
+      colnames(mydata),
+      c(
+        "year",
+        "sample_id",
+        "restoration_age",
+        "group",
+        "mineral_sum"
+      )
+    )
+    
+    # Keep only numeric mineral columns
+    mineral_cols <- mineral_cols[
+      vapply(
+        mydata[mineral_cols],
+        is.numeric,
+        logical(1)
+      )
+    ]
+    
+    print(mineral_cols)
+    
+    
+    # Ensure year is character
+    mydata$year <- trimws(
+      as.character(mydata$year)
+    )
+    
+    # Sample ID
+    if (!"sample_id" %in% colnames(mydata)) {
+      mydata$sample_id <- paste0(
+        "Sample_",
+        seq_len(nrow(mydata))
+      )
+    }
+    
+    # Restoration age:
+    # SD is not coded as year zero
+    mydata$restoration_age <- ifelse(
+      mydata$year == "SD",
+      NA_real_,
+      as.numeric(mydata$year)
+    )
+    
+    # Ordered group
+    group_levels <- c(
+      "SD",
+      as.character(
+        sort(
+          unique(
+            mydata$restoration_age[
+              !is.na(mydata$restoration_age)
+            ]
+          )
+        )
+      )
+    )
+    
+    mydata$group <- factor(
+      mydata$year,
+      levels = group_levels
+    )
+    
+    
+   
+    # 2. Convert to long format
+   
+    
+    mineral_raw_long <- mydata %>%
+      select(
+        sample_id,
+        year,
+        group,
+        restoration_age,
+        all_of(mineral_cols)
+      ) %>%
+      pivot_longer(
+        cols = all_of(mineral_cols),
+        names_to = "mineral",
+        values_to = "percentage"
+      ) %>%
+      mutate(
+        mineral = factor(
+          mineral,
+          levels = mineral_cols
+        )
+      )
+    
+    print(mineral_raw_long)
+    
+    
+  
+    # 3. Plotting positions
+
+    
+    minimum_restored_age <- min(
+      mineral_raw_long$restoration_age,
+      na.rm = TRUE
+    )
+    
+    sd_x_position <- minimum_restored_age - 2.2
+    
+    divider_x_position <- minimum_restored_age - 1.1
+    
+    mineral_raw_long <- mineral_raw_long %>%
+      mutate(
+        plot_x = ifelse(
+          year == "SD",
+          sd_x_position,
+          restoration_age
+        )
+      )
+    
+    
+
+    # 4. Group summary:
+    # mean ± SE
+ 
+    
+    mineral_raw_summary <- mineral_raw_long %>%
+      group_by(
+        mineral,
+        group,
+        year,
+        restoration_age,
+        plot_x
+      ) %>%
+      summarise(
+        n = sum(!is.na(percentage)),
+        mean_percentage = mean(
+          percentage,
+          na.rm = TRUE
+        ),
+        sd_percentage = sd(
+          percentage,
+          na.rm = TRUE
+        ),
+        se_percentage = sd_percentage / sqrt(n),
+        .groups = "drop"
+      )
+    
+    print(mineral_raw_summary)
+    
+    
+ 
+    # 5. Statistics
+   
+    # KW:
+    #   all six stages
+    #
+    # Linear regression:
+    #   restored sites only
+    #
+    # Both use original percentages.
+    
+    mineral_statistics <- mineral_raw_long %>%
+      group_by(mineral) %>%
+      group_modify(
+        ~{
+          
+          current_all <- .x %>%
+            filter(
+              !is.na(percentage),
+              !is.na(group)
+            )
+          
+          current_restored <- .x %>%
+            filter(
+              !is.na(percentage),
+              !is.na(restoration_age)
+            )
+          
+          # Kruskal–Wallis test
+          kw_result <- kruskal.test(
+            percentage ~ group,
+            data = current_all
+          )
+          
+          # Linear regression
+          linear_model <- lm(
+            percentage ~ restoration_age,
+            data = current_restored
+          )
+          
+          linear_summary <- summary(
+            linear_model
+          )
+          
+          linear_beta <- coef(
+            linear_summary
+          )[
+            "restoration_age",
+            "Estimate"
+          ]
+          
+          linear_p <- coef(
+            linear_summary
+          )[
+            "restoration_age",
+            "Pr(>|t|)"
+          ]
+          
+          linear_adj_r2 <- linear_summary$adj.r.squared
+          
+          tibble(
+            kw_p = kw_result$p.value,
+            linear_beta = linear_beta,
+            linear_p = linear_p,
+            linear_adj_r2 = linear_adj_r2
+          )
+        }
+      ) %>%
+      ungroup() %>%
+      mutate(
+        # BH adjustment across five minerals
+        kw_q = p.adjust(
+          kw_p,
+          method = "BH"
+        ),
+        linear_q = p.adjust(
+          linear_p,
+          method = "BH"
+        ),
+        trend_direction = case_when(
+          linear_beta > 0 ~ "Positive",
+          linear_beta < 0 ~ "Negative",
+          TRUE ~ "None"
+        )
+      )
+    
+    print(mineral_statistics)
+    
+ 
+    
+  
+    # 6. Statistical labels
+ 
+    
+    format_q_value <- function(x) {
+      
+      ifelse(
+        x < 0.001,
+        "q < 0.001",
+        paste0(
+          "q = ",
+          sprintf("%.3f", x)
+        )
+      )
+    }
+    
+    mineral_stat_labels <- mineral_statistics %>%
+      mutate(
+        label = paste0(
+          "Kruskal\u2013Wallis: ",
+          format_q_value(kw_q),
+          "\n",
+          "Linear regression: ",
+          format_q_value(linear_q)
+        )
+      )
+    
+    print(mineral_stat_labels)
+    
+    
+    
+    # 7. Colours
+   
+    
+    age_colours <- c(
+      "SD" = "#E69F00",
+      "11" = "#DDE879",
+      "12" = "#BCCF67",
+      "14" = "#91AA58",
+      "15" = "#718C47",
+      "17" = "#4F6F3B"
+    )
+    
+    
+  
+    # 8. Panel C
+
+    set.seed(123)
+    
+    
+    mineral_order <- c(
+      "Microcline",
+      "Clinochlore",
+      "Quartz",
+      "Albite",
+      "Muscovite"
+    )
+    
+    mineral_raw_long$mineral <- factor(
+      mineral_raw_long$mineral,
+      levels = mineral_order
+    )
+    
+    mineral_raw_summary$mineral <- factor(
+      mineral_raw_summary$mineral,
+      levels = mineral_order
+    )
+    
+    mineral_stat_labels$mineral <- factor(
+      mineral_stat_labels$mineral,
+      levels = mineral_order
+    )
+    
+    
+    panel_C <- ggplot() +
+      
+      # Linear regression and 95% CI:
+      # restored sites only
+      geom_smooth(
+        data = mineral_raw_long %>%
+          filter(
+            !is.na(restoration_age)
+          ),
+        aes(
+          x = restoration_age,
+          y = percentage
+        ),
+        method = "lm",
+        formula = y ~ x,
+        se = TRUE,
+        level = 0.95,
+        inherit.aes = FALSE,
+        colour = "#3F5633",
+        fill = "#718C47",
+        linewidth = 0.8,
+        alpha = 0.15
+      ) +
+      
+      # Individual samples
+      geom_point(
+        data = mineral_raw_long,
+        aes(
+          x = plot_x,
+          y = percentage,
+          fill = group
+        ),
+        shape = 21,
+        size = 2.3,
+        stroke = 0.4,
+        colour = "black",
+        alpha = 0.82,
+        position = position_jitter(
+          width = 0.07,
+          height = 0,
+          seed = 123
+        )
+      ) +
+      
+      # Mean ± SE
+      geom_errorbar(
+        data = mineral_raw_summary,
+        aes(
+          x = plot_x,
+          ymin = mean_percentage - se_percentage,
+          ymax = mean_percentage + se_percentage
+        ),
+        width = 0.12,
+        linewidth = 0.52,
+        colour = "black"
+      ) +
+      
+      # Group means
+      geom_point(
+        data = mineral_raw_summary,
+        aes(
+          x = plot_x,
+          y = mean_percentage
+        ),
+        shape = 23,
+        size = 2.5,
+        stroke = 0.65,
+        fill = "white",
+        colour = "black"
+      ) +
+      
+      # Separate SD from restoration chronosequence
+      geom_vline(
+        xintercept = divider_x_position,
+        linetype = "dotted",
+        linewidth = 0.45,
+        colour = "grey55"
+      ) +
+      
+     # Statistical results
+      geom_text(
+        data = mineral_stat_labels,
+        aes(
+          x = Inf,
+          y = Inf,
+          label = label
+        ),
+        inherit.aes = FALSE,
+        hjust = 1.03,
+        vjust = 1.15,
+        size = 2.6,
+        lineheight = 1.05,
+        colour = "black"
+      ) +
+      
+      # One panel for each original mineral
+      facet_wrap(
+        ~mineral,
+        nrow = 1,
+        scales = "free_y"
+      ) +
+      
+      scale_fill_manual(
+        values = age_colours,
+        drop = FALSE
+      ) +
+      
+      scale_x_continuous(
+        breaks = c(
+          sd_x_position,
+          sort(
+            unique(
+              mineral_raw_long$restoration_age[
+                !is.na(
+                  mineral_raw_long$restoration_age
+                )
+              ]
+            )
+          )
+        ),
+        labels = c(
+          "SD",
+          sort(
+            unique(
+              mineral_raw_long$restoration_age[
+                !is.na(
+                  mineral_raw_long$restoration_age
+                )
+              ]
+            )
+          )
+        ),
+        expand = expansion(
+          mult = c(0.08, 0.08)
+        )
+      ) +
+      
+      # Additional upper space for statistical annotations
+      scale_y_continuous(
+        expand = expansion(
+          mult = c(0.10, 0.28)
+        )
+      ) +
+      
+      labs(
+        x = "Restoration age (years)",
+        y = "Mineral proportion (%)"
+      ) +
+      
+      theme_classic(
+        base_size = 9.5
+      ) +
+      
+      theme(
+        strip.background = element_blank(),
+        
+        strip.text = element_text(
+          size = 16,
+          face = "plain",
+          colour = "black",
+          margin = margin(
+            b = 4
+          )
+        ),
+        
+        axis.title = element_text(
+          size = 16,
+          colour = "black"
+        ),
+        
+        axis.text = element_text(
+          size = 16,
+          colour = "black"
+        ),
+        
+        axis.text.x = element_text(
+          angle = 0,
+          hjust = 0.5,
+          vjust = 0.5
+        ),
+        
+        axis.line = element_line(
+          colour = "black",
+          linewidth = 0.5
+        ),
+        
+        axis.ticks = element_line(
+          colour = "black",
+          linewidth = 0.45
+        ),
+        
+        panel.spacing.x = unit(
+          0.55,
+          "lines"
+        ),
+        
+        legend.position = "none",
+        
+        plot.margin = margin(
+          t = 7,
+          r = 8,
+          b = 6,
+          l = 7
+        )
+      )
+    
+    print(panel_C)
+```

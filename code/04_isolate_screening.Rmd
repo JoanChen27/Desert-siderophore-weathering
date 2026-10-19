@@ -1,0 +1,934 @@
+---
+title: "Desert restoration project -- Part 4: Cultivated-isolate screening and field representation"
+author: "Qiong_Chen"
+date: "2026-08-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+source("00_setup.R")
+```
+
+# 4. Cultivated-isolate screening and field representation
+
+## 4.1 Isolate taxonomy
+
+```{r isolated_taxonomy}
+  library(ape)
+  library(ggplot2)
+  library(ggtree)
+  library(ggtreeExtra)
+  library(ggnewscale)
+  library(dplyr)
+  
+
+  # 1. 读树和注释
+
+  tr <- read.tree('~/Desktop/replot/culture/field-experiment/16s/consensus_v2.nwk')
+  
+  dat1 <- read.delim(
+    '~/Desktop/replot/culture/field-experiment/16s/consensus_v2_idlabel.txt',
+    stringsAsFactors = FALSE,
+    check.names = FALSE,
+    header = TRUE,
+    sep = "\t"
+  )
+  table(dat1$genus)
+  dat1 <- dat1 %>% filter(ID %in% tr$tip.label)
+  
+  # 每个tip给一个固定长度的bar
+  dat1$abun <- 0.1
+  
+
+  # 2. genus分组
+
+  genus_counts <- table(dat1$genus)
+  rare_genus <- names(genus_counts[genus_counts < 10])
+  
+  dat1$genus_grouped <- ifelse(dat1$genus %in% rare_genus, "Other genus", dat1$genus)
+  
+  group_levels <- c(
+    "Arthrobacter",
+    "Pseudarthrobacter",
+    "Microbacterium",
+    "Sinorhizobium",
+    "Streptomyces",
+    "Other genus"
+  )
+  dat1$genus_grouped <- factor(dat1$genus_grouped, levels = group_levels)
+  
+
+  # 3. 因子顺序
+
+  dat1$medium <- factor(dat1$medium, levels = c("AIA", "MA", "R2A", "TSA", "Nutrient agar"))
+  dat1$Temperature <- factor(dat1$Temperature, levels = c("15", "30", "45"))
+  dat1$Concentration <- factor(dat1$Concentration, levels = c("0.01", "0.1", "1"))
+  dat1$genus <- factor(dat1$genus, levels = c("Arthrobacter","Pseudarthrobacter","Microbacterium","Sinorhizobium","Streptomyces","Other genus"))
+  
+  genus_order <- c(
+    "Arthrobacter",
+    "Pseudarthrobacter",
+    "Microbacterium",
+    "Sinorhizobium",
+    "Streptomyces",
+    "Other genus"
+  )
+  
+  dat1$Selected_ring <- ifelse(dat1$Selected == "No", "Not selected", "Selected")
+  dat1$Selected_ring <- factor(dat1$Selected_ring, levels = c("Not selected", "Selected"))
+  
+ 
+  # 4. 给树分组
+
+  group_list <- split(dat1$ID, dat1$genus_grouped)
+  tr2 <- groupOTU(tr, group_list)
+  tr2 <- ladderize(tr2)
+  
+  
+  # 5. 配色
+  
+  genus_cols <- c(
+    "Arthrobacter"      = "#D81B60",
+    "Pseudarthrobacter" = "#3366CC",
+    "Microbacterium"    = "#1B9E77",
+    "Sinorhizobium"     = "#E67E22",
+    "Streptomyces"      = "#8E44AD",
+    "Other genus"            = "#BDBDBD"
+  )
+  
+  medium_cols <- c(
+    "AIA" = "#E64B35",
+    "MA"  = "#4DBBD5",
+    "R2A" = "#00A087",
+    "TSA" = "#3C5488",
+    "Nutrient agar"  = "#b39ddb"
+  )
+  
+  temp_cols <- c(
+    "15" = "#FDD9A0",
+    "30" = "#F39C12",
+    "45" = "#D94801"
+  )
+  
+  conc_cols <- c(
+    "0.01" = "#C7E9C0",
+    "0.1"  = "#74C476",
+    "1"    = "#238B45"
+  )
+  
+  selected_cols <- c(
+    "Not selected" = "#D9D9D9",
+    "Selected"     = "#111111"
+  )
+  
+  # 6. 主树
+
+  p <- ggtree(
+    tr2,
+    layout = "circular",
+    size = 0.22,
+    aes(color = group)
+  ) +
+    scale_color_manual(
+      values = genus_cols,
+      breaks = genus_order,
+      limits = genus_order,
+      name = "Genus"
+    ) +
+    geom_treescale(
+      x = 0,
+      y = 0,
+      fontsize = 5,
+      offset = 0.5,
+      linesize = 0.8
+    ) +
+    theme(
+      legend.position = "right",
+      legend.title = element_text(size = 13, face = "bold"),
+      legend.text = element_text(size = 11),
+      legend.box = "vertical",
+      legend.spacing.y = unit(0.18, "cm"),
+      plot.margin = margin(4, 4, 4, 4, "mm"),
+      panel.background = element_blank(),
+      plot.background = element_blank()
+    )
+  
+  
+  p1 <- p +
+    new_scale_fill() +
+    geom_fruit(
+      data = dat1,
+      geom = geom_bar,
+      mapping = aes(y = ID, x = abun, fill = medium),
+      stat = "identity",
+      orientation = "y",
+      pwidth = 0.085,
+      offset = 0.020,
+      colour = "white",
+      linewidth = 0.02
+    ) +
+    scale_fill_manual(
+      values = medium_cols,
+      breaks = c("AIA", "MA", "R2A", "TSA", "Nutrient agar"),
+      limits = c("AIA", "MA", "R2A", "TSA", "Nutrient agar"),
+      name = "Medium"
+    )
+  p1
+
+  # 9. ring 2: temperature
+
+  p2 <- p1 +
+    new_scale_fill() +
+    geom_fruit(
+      data = dat1,
+      geom = geom_bar,
+      mapping = aes(y = ID, x = abun, fill = Temperature),
+      stat = "identity",
+      orientation = "y",
+      pwidth = 0.085,
+      offset = 0.010,
+      colour = "white",
+      linewidth = 0.02
+    ) +
+    scale_fill_manual(
+      values = temp_cols,
+      breaks = c("15", "30", "45"),
+      limits = c("15", "30", "45"),
+      name = "Temperature"
+    )
+  p2
+
+  # 10. ring 3: concentration
+
+  p3 <- p2 +
+    new_scale_fill() +
+    geom_fruit(
+      data = dat1,
+      geom = geom_bar,
+      mapping = aes(y = ID, x = abun, fill = Concentration),
+      stat = "identity",
+      orientation = "y",
+      pwidth = 0.085,
+      offset = 0.010,
+      colour = "white",
+      linewidth = 0.02
+    ) +
+    scale_fill_manual(
+      values = conc_cols,
+      breaks = c("0.01", "0.1", "1"),
+      limits = c("0.01", "0.1", "1"),
+      name = "Concentration"
+    )
+  p3
+ 
+  # 11. ring 4: selected for coculture
+
+  p4 <- p3 +
+    new_scale_fill() +
+    geom_fruit(
+      data = dat1,
+      geom = geom_bar,
+      mapping = aes(y = ID, x = abun, fill = Selected_ring),
+      stat = "identity",
+      orientation = "y",
+      pwidth = 0.055,
+      offset = 0.010,
+      colour = "white",
+      linewidth = 0.015
+    ) +
+    scale_fill_manual(
+      values = selected_cols,
+      breaks = c("Selected", "Not selected"),
+      limits = c("Selected", "Not selected"),
+      name = "Co-culture screen"
+    )
+  
+  p4
+  
+  
+  ggsave(filename = '~/Desktop/replot/culture/field-experiment/16s/cdhit_16s.tree-update.pdf',width = 10, height = 10)
+  
+  #堆叠图展示genus ratio
+  
+  library(dplyr)
+  library(ggplot2)
+  library(scales)
+  
+  # 固定顺序
+  dat1$genus_grouped <- factor(
+    dat1$genus_grouped,
+    levels = c(
+      "Arthrobacter",
+      "Pseudarthrobacter",
+      "Microbacterium",
+      "Sinorhizobium",
+      "Streptomyces",
+      "Other genus"
+    )
+  )
+  
+  # 统计 count 和 ratio
+  genus_ratio <- dat1 %>%
+    count(genus_grouped, name = "n") %>%
+    mutate(ratio = n / sum(n))
+  
+  genus_ratio
+  
+  # 配色
+  genus_cols <- c(
+    "Arthrobacter"      = "#D81B60",
+    "Pseudarthrobacter" = "#3366CC",
+    "Microbacterium"    = "#1B9E77",
+    "Sinorhizobium"     = "#E67E22",
+    "Streptomyces"      = "#8E44AD",
+    "Other genus"            = "#BDBDBD"
+  )
+  
+  # 100% stacked barplot
+  p_ratio <- ggplot(genus_ratio, aes(x = "All isolates", y = ratio, fill = genus_grouped)) +
+    geom_col(width = 0.7, color = "white", linewidth = 0.3) +
+    scale_fill_manual(values = genus_cols, drop = FALSE) +
+    scale_y_continuous(labels = percent_format(accuracy = 1), expand = c(0, 0)) +
+    labs(x = NULL, y = "Ratio", fill = "Genus") +
+    theme_classic(base_size = 13) +
+    theme(
+      axis.text.x = element_text(size = 12),
+      axis.title.y = element_text(size = 13),
+      legend.title = element_text(face = "bold"),
+      legend.position = "right"
+    )
+  
+  p_ratio
+  
+  
+  
+  ggplot(genus_ratio, aes(x = ratio, y = "All isolates", fill = genus_grouped)) +
+    geom_col(width = 0.7, color = "white", linewidth = 0.3) +
+    scale_fill_manual(values = genus_cols, drop = FALSE) +
+    scale_x_continuous(labels = percent_format(accuracy = 1), expand = c(0, 0)) +
+    labs(x = "Ratio", y = NULL, fill = "Genus") +
+    theme_classic(base_size = 13)
+  
+  
+  
+  ggsave(filename = '~/Desktop/replot/culture/field-experiment/16s/genus-ratio.tree-update.pdf',width = 10, height = 10)
+  
+  
+  ## Sand-incubation-panel
+  library(ape)
+  library(ggplot2)
+  library(ggtree)
+  library(ggtreeExtra)
+  library(ggnewscale)
+  library(dplyr)
+  
+  
+  # 1. read data
+ 
+  dat2 <- read.delim(
+    "~/Desktop/replot/culture/field-experiment/16s/metagenome/50-culture/50.cas.txt",
+    stringsAsFactors = FALSE,
+    check.names = FALSE,
+    header = TRUE,
+    sep = "\t"
+  )
+  
+  tr <- read.tree("~/Desktop/replot/culture/field-experiment/16s/metagenome/50-culture/16s-50.culture.nwk")
+  
+  dat1 <- read.delim(
+    "~/Desktop/replot/culture/field-experiment/16s/metagenome/50-culture/16s-culture_idlabel.txt",
+    stringsAsFactors = FALSE,
+    check.names = FALSE,
+    header = TRUE,
+    sep = "\t"
+  )
+  
+  dat1 <- dat1 %>% filter(ID %in% tr$tip.label)
+  
+ 
+  # 2. genus grouping
+  # 规则：
+  # - 前面大树已有主genus：保留并沿用原色
+  # - 新genus中，出现 >= 3 次：保留并赋新色
+  # - 其余并入 Other genus
+
+  major_genus <- c(
+    "Arthrobacter",
+    "Pseudarthrobacter",
+    "Microbacterium",
+    "Sinorhizobium",
+    "Streptomyces"
+  )
+  
+  genus_counts <- table(dat1$genus)
+  
+  new_keep_genus <- names(genus_counts)[
+    genus_counts >= 3 & !(names(genus_counts) %in% major_genus)
+  ]
+  
+  dat1$genus_grouped <- ifelse(
+    dat1$genus %in% c(major_genus, new_keep_genus),
+    dat1$genus,
+    "Other genus"
+  )
+  
+
+  # 3. color palette
+  # 旧颜色保持一致；新增genus给新颜色
+
+  base_cols <- c(
+    "Arthrobacter"      = "#D81B60",
+    "Pseudarthrobacter" = "#3366CC",
+    "Microbacterium"    = "#1B9E77",
+    "Sinorhizobium"     = "#E67E22",
+    "Streptomyces"      = "#8E44AD"
+  )
+  
+  # 给新出现且 >=3 次的 genus 分配新颜色
+  # 可按需要扩充
+  extra_pool <- c(
+    "#7CAE00",  # olive green
+    "#F564E3",  # pink-purple
+    "#00BFC4",  # teal
+    "#A6761D",  # brown
+    "#E7298A",  # magenta
+    "#66A61E"   # green
+  )
+  
+  if (length(new_keep_genus) > length(extra_pool)) {
+    stop("新增 genus 太多，extra_pool 颜色不够，请补充颜色。")
+  }
+  
+  extra_cols <- setNames(extra_pool[seq_along(new_keep_genus)], new_keep_genus)
+  
+  genus_cols <- c(
+    base_cols,
+    extra_cols,
+    "Other genus" = "#BDBDBD"
+  )
+  
+  # legend 顺序：
+  # 先前面已有的5个
+  # 再新增保留的 genus（按字母排序或按频次都可以）
+  # 最后 Other genus
+  new_keep_genus <- sort(new_keep_genus)
+  
+  
+  genus_order <- c(
+    "Arthrobacter",
+    "Bacillus_A",
+    "Microbacterium",
+    "Peribacillus",
+    "Sinorhizobium",
+    "Streptomyces",
+    "Other genus"
+  )
+  
+  
+  dat1$genus_grouped <- factor(dat1$genus_grouped, levels = genus_order)
+  
+  
+  # 4. significant factor
+  
+  dat1$significant <- factor(dat1$significant, levels = c("No", "Yes"))
+  
+  sig_cols <- c(
+    "No"  = "#D9D9D9",
+    "Yes" = "#1B9E77"
+  )
+  
+
+  # 5. group tree
+  
+  dat2 <- split(dat1$ID, dat1$genus_grouped)
+  tr2  <- groupOTU(tr, dat2)
+  
+ 
+  # 6. base tree
+
+  p_base <- ggtree(
+    tr2,
+    layout = "circular",
+    aes(color = group),
+    size = 0.58
+  ) + geom_treescale(x = 0, y = 0, width = 0.5, fontsize = 6)
+  p_base 
+  
+ 
+  # 7. labels
+ 
+  p2 <- p_base +
+    geom_tiplab2(
+      aes(label = label),
+      size = 4.8,
+      offset = 0.08,
+      align = TRUE,
+      linetype = "dotted",
+      linesize = 0.6,
+      lineend = "round",
+      show.legend = FALSE
+    ) +
+    scale_color_manual(
+      values = genus_cols,
+      breaks = genus_order,
+      limits = genus_order,
+      name = "Genus",
+      guide = guide_legend(override.aes = list(size = 1.4))
+    ) +
+    theme(
+      legend.position = "right",
+      legend.title = element_text(size = 16, face = "bold"),
+      legend.text = element_text(size = 12),
+      legend.box = "vertical",
+      legend.spacing.y = unit(0.16, "cm"),
+      plot.margin = margin(2, 2, 2, 2, "mm"),
+      panel.background = element_blank(),
+      plot.background = element_blank()
+    )
+  p2
+
+  # 8. outer significant ring
+  # significant 仍放最外围
+ 
+  p3 <- p2 +
+    ggnewscale::new_scale_fill() +
+    geom_fruit(
+      data = dat1,
+      geom = geom_bar,
+      mapping = aes(y = ID, x = abun, fill = significant),
+      stat = "identity",
+      orientation = "y",
+      pwidth = 0.035,
+      offset = 0.28,
+      colour = "white",
+      linewidth = 0.015
+    ) +
+    scale_fill_manual(
+      values = sig_cols,
+      breaks = c("No", "Yes"),
+      limits = c("No", "Yes"),
+      name = "Priority strains"
+    )
+  
+  p3
+  
+  ggsave(filename = '~/Desktop/replot/culture/field-experiment/16s/50.tree-update.pdf',width = 8, height = 8)
+
+```
+
+## 4.2 Isolate–MAG genomic overlap
+
+```{r isolate-mag}
+
+#ANI
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+
+
+# 读取数据
+df <- read_tsv(
+  "~/Desktop/replot/culture/isolate_MAGs_field/panelA_input.tsv",
+  show_col_types = FALSE
+)
+
+# 分类
+df2 <- df %>%
+  mutate(
+    ANI = suppressWarnings(as.numeric(ANI)),
+    category = case_when(
+      is.na(ANI) ~ "No hit",
+      ANI >= 95 ~ "ANI \u2265 95",
+      ANI >= 90 & ANI < 95 ~ "90 \u2264 ANI < 95",
+      ANI < 90 ~ "ANI < 90"
+    )
+  ) %>%
+  mutate(
+    category = factor(
+      category,
+      levels = c("ANI \u2265 95", "90 \u2264 ANI < 95", "ANI < 90", "No hit")
+    )
+  )
+
+# 统计数量和比例
+plot_df <- df2 %>%
+  count(category) %>%
+  mutate(
+    percent = n / sum(n) * 100,
+    label = paste0(n, "\n(", round(percent, 1), "%)")
+  )
+
+# 绘图
+p <- ggplot(plot_df, aes(x = category, y = n)) +
+  geom_col(width = 0.7, fill = "#0277bd") +
+  geom_text(aes(label = label), vjust = -0.4, size = 5) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.22))) +
+  labs(
+    x = NULL,
+    y = "Number of isolates"
+  ) +
+  theme_classic(base_size = 22) +
+  theme(
+    axis.line = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
+    panel.background = element_blank(),
+    axis.text.x = element_text(color = "black", angle = 20, hjust = 1),
+    axis.text.y = element_text(color = "black"),
+    axis.title.y = element_text(color = "black")
+  )
+
+print(p)
+
+# 保存
+ggsave(
+  "~/Desktop/replot/culture/isolate_MAGs_field/PanelA_ANI_overlap_barplot.pdf",
+  p, width = 6, height = 4.6
+)
+
+
+# see the genus seperately
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(forcats)
+library(patchwork)
+
+
+# File paths
+
+iso_file <- "~/Desktop/replot/culture/isolate_MAGs_field/isolates_genus_count.tsv"
+mag_file <- "~/Desktop/replot/culture/isolate_MAGs_field/fieldMAGs_genus_count.tsv"
+
+# Common settings
+
+top_n <- 10
+bar_fill <- "#4C78A8"
+
+make_top_plot <- function(df, total_denominator = NULL, ylab_text = "Percentage", remove_unclassified = FALSE) {
+  
+  if (remove_unclassified) {
+    df <- df %>% filter(genus != "Unclassified")
+  }
+  
+  if (is.null(total_denominator)) {
+    total_denominator <- sum(df$n)
+  }
+  
+  df2 <- df %>%
+    arrange(desc(n)) %>%
+    mutate(rank = row_number(),
+           genus_plot = if_else(rank <= top_n, genus, "Others")) %>%
+    group_by(genus_plot) %>%
+    summarise(n = sum(n), .groups = "drop") %>%
+    mutate(percent = n / total_denominator * 100) %>%
+    arrange(desc(percent))
+  
+  # Others放最下面
+  df2 <- df2 %>%
+    mutate(genus_plot = if_else(genus_plot == "Others", "zzz_Others", genus_plot)) %>%
+    mutate(genus_plot = fct_reorder(genus_plot, percent)) %>%
+    mutate(genus_plot = fct_recode(genus_plot, Others = "zzz_Others"))
+  
+  p <- ggplot(df2, aes(x = genus_plot, y = percent)) +
+    geom_col(width = 0.7, fill = bar_fill) +
+    geom_text(aes(label = sprintf("%.1f%%", percent)), hjust = -0.12, size = 3.5) +
+    coord_flip() +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
+    labs(x = NULL, y = ylab_text) +
+    theme_classic(base_size = 16) +
+    theme(
+      axis.line = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
+      panel.background = element_blank(),
+      axis.text.x = element_text(color = "black"),
+      axis.text.y = element_text(color = "black"),
+      axis.title.y = element_text(color = "black"),
+      axis.ticks = element_line(color = "black")
+    )
+  
+  return(p)
+}
+
+
+# Panel B: isolates
+
+iso_df <- read_tsv(
+  iso_file,
+  col_names = c("genus", "n"),
+  show_col_types = FALSE
+)
+
+pB <- make_top_plot(
+  df = iso_df,
+  total_denominator = sum(iso_df$n),
+  ylab_text = "Percentage of isolates",
+  remove_unclassified = FALSE
+) +
+  ggtitle("Isolates")
+
+
+# Panel C: field MAGs
+
+mag_df <- read_tsv(
+  mag_file,
+  col_names = c("genus", "n"),
+  show_col_types = FALSE
+)
+
+# 去掉 Unclassified 后再计算百分比
+mag_df_classified <- mag_df %>% filter(genus != "Unclassified")
+mag_df_classified <- mag_df
+
+pC <- make_top_plot(
+  df = mag_df_classified,
+  total_denominator = sum(mag_df_classified$n),
+  ylab_text = "Percentage of MAGs",
+  remove_unclassified = FALSE
+) +
+  ggtitle("Field MAGs")
+
+
+# Combine
+
+library(cowplot)
+
+p_combined <- plot_grid(
+  pB, pC,
+  ncol = 2,
+  align = "h",
+  axis = "tb"
+)
+
+print(p_combined)
+
+# Save
+
+ggsave(
+  "~/Desktop/replot/culture/isolate_MAGs_field/PanelBC_genus_composition_percent.pdf",
+  p_combined, width = 12, height = 4
+)
+
+```
+
+## 4.3 Sterile-sand isolate screening
+
+```{r isolate-screening}
+
+  library(dplyr)
+  library(ggplot2)
+  library(ggpubr)
+  library(purrr)
+  library(tidyr)
+  library(forcats)
+  library(scales)
+  
+  mydata <- read.delim(
+    '~/Desktop/replot/culture/field-experiment/50-strains/ks.all.plot.txt',
+    stringsAsFactors = FALSE, check.names = FALSE,
+    header = TRUE, sep = "\t"
+  )
+  
+  mydata$ks <- as.numeric(mydata$ks)
+  
+  # 只保留 MA / R2A
+  mydata <- mydata %>%
+    filter(medium %in% c("MA", "R2A"))
+  
+  # 每个 medium 对应 NC
+  nc_map <- c("MA" = "MA-NC", "R2A" = "R2A-NC")
+  
+  # genus 合并逻辑（和原来一致）
+  mydata <- mydata %>%
+    mutate(
+      genus_plot = case_when(
+        genus %in% c("Bacillus_A", "Bacillus_I", "Bacillus") ~ "Bacillus_A",
+        genus %in% c("Arthrobacter", "Microbacterium", "Peribacillus",
+                     "Streptomyces") ~ genus,
+        TRUE ~ "Other genus"
+      ),
+      genus_plot = factor(
+        genus_plot,
+        levels = c("Arthrobacter", "Bacillus_A", "Microbacterium",
+                   "Peribacillus", "Streptomyces", "Other genus")
+      )
+    )
+  
+  # 调色板
+  genus_cols <- c(
+    Arthrobacter   = "#e41a1c",
+    Bacillus_A     = "#377eb8",
+    Microbacterium = "#4daf4a",
+    Peribacillus   = "#ff7f00",
+    Streptomyces   = "#984ea3",
+    'Other genus'         = "#999999"
+  )
+  
+  # 逐株 vs 对应 NC 统计
+  stat_res <- mydata %>%
+    distinct(group, medium, genus_plot) %>%
+    filter(!group %in% c("MA-NC", "R2A-NC")) %>%
+    mutate(nc_group = nc_map[medium]) %>%
+    rowwise() %>%
+    mutate(
+      n_group = sum(mydata$group == group & mydata$medium == medium, na.rm = TRUE),
+      n_nc    = sum(mydata$group == nc_group & mydata$medium == medium, na.rm = TRUE),
+      median_group = median(mydata$ks[mydata$group == group & mydata$medium == medium], na.rm = TRUE),
+      median_nc    = median(mydata$ks[mydata$group == nc_group & mydata$medium == medium], na.rm = TRUE),
+      delta_ks     = median_group - median_nc,
+      pct_change   = (median_group - median_nc) / median_nc * 100,
+      p_value      = wilcox.test(
+        x = mydata$ks[mydata$group == group & mydata$medium == medium],
+        y = mydata$ks[mydata$group == nc_group & mydata$medium == medium],
+        exact = FALSE
+      )$p.value
+    ) %>%
+    ungroup() %>%
+    mutate(
+      p_adj_BH = p.adjust(p_value, method = "BH"),
+      priority_strain = ifelse(delta_ks < 0 & p_value < 0.1, "Priority", "Other")
+    ) %>%
+    arrange(medium, delta_ks)
+  
+  stat_res
+  
+  # x轴顺序：按各组中位数升序，NC放最后
+  order_df <- mydata %>%
+    group_by(group, medium) %>%
+    summarise(med_ks = median(ks, na.rm = TRUE), .groups = "drop") %>%
+    mutate(is_nc = group %in% c("MA-NC", "R2A-NC")) %>%
+    arrange(medium, is_nc, med_ks)
+  
+  group_levels <- order_df$group
+  
+  mydata <- mydata %>%
+    mutate(
+      group  = factor(group, levels = unique(group_levels)),
+      medium = factor(medium, levels = c("MA", "R2A"))
+    )
+  
+  # 给 priority 组准备带星号的标签
+  label_df <- stat_res %>%
+    mutate(
+      group_label = ifelse(priority_strain == "Priority",
+                           paste0(group, "*"),
+                           group)
+    ) %>%
+    select(group, medium, group_label)
+  
+  # 用于替换 x 轴标签
+  label_map <- setNames(label_df$group_label, label_df$group)
+  
+  # NC 自己也保留原名
+  label_map["MA-NC"] <- "MA-NC"
+  label_map["R2A-NC"] <- "R2A-NC"
+  
+  # 需要打星号的组
+  star_df <- stat_res %>%
+    filter(priority_strain == "Priority") %>%
+    select(group, medium)
+  
+  # 给每个组计算星号放置高度：该组最大值 + 一点偏移
+  star_pos <- mydata %>%
+    group_by(group, medium) %>%
+    summarise(
+      y = max(ks, na.rm = TRUE) + 0.06,
+      .groups = "drop"
+    ) %>%
+    inner_join(star_df, by = c("group", "medium")) %>%
+    mutate(label = "*")
+  
+  star_pos
+  
+  
+  
+  p_box2 <- ggplot(mydata, aes(x = group, y = ks, colour = genus_plot)) +
+    geom_boxplot(
+      width = 0.62,
+      outlier.shape = NA,
+      fill = NA,
+      linewidth = 0.65
+    ) +
+    geom_jitter(
+      size = 1.8, alpha = 0.85,
+      width = 0.045, height = 0
+    ) +
+    geom_text(
+      data = star_pos,
+      aes(x = group, y = y, label = label),
+      inherit.aes = FALSE,
+      colour = "black",
+      size = 7,
+      vjust = 0
+    ) +
+    facet_wrap(~ medium, nrow = 2, scales = "free_x") +
+    scale_colour_manual(values = genus_cols, name = "Genus") +
+    theme_pubr(base_size = 16) +
+    theme(
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+      legend.position = "none",
+      # strip.text = element_text(face = "bold"),
+      # axis.title.y = element_text(face = "bold")
+    ) +
+    labs(
+      x = NULL,
+      y = "Estimated Ks (m/day)"
+    )
+  
+  p_box2
+  
+  ggsave(filename = "~/Desktop/replot/culture/field-experiment/50-strains/50-ks.boxplot-update.pdf", width = 10,height = 6)
+  
+  plot_df <- stat_res %>%
+    mutate(
+      group = fct_reorder(group, pct_change),
+      priority_strain = factor(priority_strain, levels = c("Other", "Priority"))
+    )
+  
+  p_effect <- ggplot(plot_df, aes(x = group, y = pct_change, colour = genus_plot)) +
+    geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50", linewidth = 0.5) +
+    geom_point(aes(shape = priority_strain), size = 3) +
+    facet_wrap(~ medium, nrow = 2, scales = "free_x") +
+    scale_colour_manual(values = genus_cols, name = "Genus") +
+    scale_shape_manual(values = c("Other" = 16, "Priority" = 17), name = "Screening result") +
+    theme_pubr(base_size = 16) +
+    theme(
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+      legend.position = "bottom",
+      # strip.text = element_text(face = "bold"),
+      # axis.title.y = element_text(face = "bold")
+    ) +
+    labs(
+      x = NULL,
+      y = "% change in estimated Ks vs medium control"
+    )
+  
+  p_effect
+
+  ggsave(filename = "~/Desktop/replot/culture/field-experiment/50-strains/50-ks.boxplot-effect.pdf", width = 10,height = 6)
+  
+    
+  p_delta <- ggplot(plot_df, aes(x = group, y = delta_ks, colour = genus_plot)) +
+    geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50", linewidth = 0.5) +
+    geom_point(aes(shape = priority_strain), size = 3) +
+    facet_wrap(~ medium, nrow = 2, scales = "free_x") +
+    scale_colour_manual(values = genus_cols, name = "Genus") +
+    scale_shape_manual(values = c("Other" = 16, "Priority" = 17), name = "Screening result") +
+    theme_pubr(base_size = 16) +
+    theme(
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+      legend.position = "right",
+      strip.text = element_text(face = "bold")
+    ) +
+    labs(
+      x = NULL,
+      y = expression(Delta*" estimated Ks (m/day) vs medium control")
+    )
+  
+  p_delta
+```

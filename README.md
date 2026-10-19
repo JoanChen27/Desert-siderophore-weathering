@@ -1,4 +1,4 @@
-# desert-siderophore-weathering
+# Desert-siderophore-weathering
 
 Analysis code for the manuscript **"Microbial siderophore activity can initiate weathering of barren desert sand"** (first author: Qiong Chen).
 
@@ -6,25 +6,15 @@ The study asks whether microbes can directly initiate weathering of barren deser
 
 ## Repository contents
 
-```
-code/
-├── Desert.Rmd  # Main analysis notebook (R Markdown), 8 parts
-└── V18_global_weathering_potential_model_updated_inputs_final_tables.R  # Global weathering potential model
-```
-
-### `Desert.Rmd` — main analyses
-
-1. Field chronosequence and sand-matrix properties (physicochemical properties, D50 and hydraulic conductivity, mineral composition and PCA)
-2. Microbial diversity and community succession (beta-diversity, alpha diversity, phylogenetic tree, fuzzy C-means clusters, GLM, permutation tests, LASSO, dbRDA, gradient boosting)
-3. Functional and biogeochemical reprogramming (KEGG pathways, functional maptree, mediation analysis)
-4. Cultivated-isolate screening and field representation (isolate taxonomy, isolate–MAG overlap, sterile-sand screening)
-5. Laboratory validation of sand weathering (F8 incubation experiments)
-6. F8 metabolism and siderophore mechanism (metabolomics, DFOE identification and quantification, *bibC* mutant and overexpression strains)
-7. Siderophore-associated patterns across the field chronosequence
-
-### `V18_global_weathering_potential_model_updated_inputs_final_tables.R` — global model
-
-Global weathering potential model: function-only microbial suitability with V18 fixed-domain substrate scaling and AI+PET climate. Reads curated input tables (sand-matrix, climate, SoilGrids covariates, microbe tolerance table) and writes model outputs, tables and figures.
+- `Desert.Rmd` — main analysis notebook (R Markdown), 8 parts:
+  1. Field chronosequence and sand-matrix properties (physicochemical properties, D50 and hydraulic conductivity, mineral composition and PCA)
+  2. Microbial diversity and community succession (beta-diversity, alpha diversity, phylogenetic tree, fuzzy C-means clusters, GLM, permutation tests, LASSO, dbRDA, gradient boosting)
+  3. Functional and biogeochemical reprogramming (KEGG pathways, functional maptree, mediation analysis)
+  4. Cultivated-isolate screening and field representation (isolate taxonomy, isolate–MAG overlap, sterile-sand screening)
+  5. Laboratory validation of sand weathering (F8 incubation experiments)
+  6. F8 metabolism and siderophore mechanism (metabolomics, DFOE identification and quantification, *bibC* mutant and overexpression strains)
+  7. Siderophore-associated patterns across the field chronosequence
+- `Global_weathering_potential_model.R` — global weathering potential model: function-only microbial suitability with V18 fixed-domain substrate scaling and AI+PET climate. Reads curated input tables (sand-matrix, climate, SoilGrids covariates, microbe tolerance table) and writes model outputs, tables and figures.
 
 ## Requirements
 

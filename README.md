@@ -37,4 +37,4 @@ The underlying datasets are publicly available as described in the manuscript:
 
 ## Status
 
-Manuscript under review. This repository is private until publication; code will be made public on acceptance.
+Manuscript under review. Analysis code is available in this repository.

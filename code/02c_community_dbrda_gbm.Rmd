@@ -12,7 +12,6 @@ knitr::opts_chunk$set(
   message = FALSE
 )
 source("00_setup.R")
-# data_dir is defined in 00_setup.R.
 ```
 
 ## 2.11 dbRDA and variation partitioning

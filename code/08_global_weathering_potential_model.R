@@ -3,6 +3,12 @@
 # Function-only microbial suitability + V18 fixed-domain substrate scaling and AI+PET climate
 # Evidence score uses two tiers only: 0.5 or 1.0
 
+# Same root as code/00_setup.R. Repeated here so this script can run without
+# loading every package in 00_setup.R. If 00_setup.R was already sourced,
+# that data_dir is kept.
+if (!exists("data_dir", inherits = TRUE)) {
+  data_dir <- path.expand(Sys.getenv("DESERT_DATA_DIR", unset = "~"))
+}
 
 library(tidyverse)
 library(readxl)
@@ -21,14 +27,14 @@ library(mgcv)
 #   microbe_tolerance_table.csv
 # Optional for separate 84-day anchor sensitivity:
 #   Alxa daily climate POWER csv
-input_dir  <- "~/Desktop/replot/global_weathering_input/v16"
+input_dir  <- file.path(data_dir, "Desktop", "replot", "global_weathering_input", "v16")
 parent_input_dir <- dirname(input_dir)
-legacy_update_dir <- "~/Desktop/replot/global_weathering_input/file_input/update"
-legacy_file_input_dir <- "~/Desktop/replot/global_weathering_input/file_input"
+legacy_update_dir <- file.path(data_dir, "Desktop", "replot", "global_weathering_input", "file_input", "update")
+legacy_file_input_dir <- file.path(data_dir, "Desktop", "replot", "global_weathering_input", "file_input")
 
-output_dir <- "~/Desktop/replot/global_weathering_input/v18_model_outputs"
-fig_output_dir <- "~/Desktop/replot/global_weathering_input/v18_figure_outputs"
-out_plot_dir <- "~/Desktop/replot/global_weathering_input/out-v18"
+output_dir <- file.path(data_dir, "Desktop", "replot", "global_weathering_input", "v18_model_outputs")
+fig_output_dir <- file.path(data_dir, "Desktop", "replot", "global_weathering_input", "v18_figure_outputs")
+out_plot_dir <- file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18")
 
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 dir.create(fig_output_dir, showWarnings = FALSE, recursive = TRUE)
@@ -2207,7 +2213,7 @@ p_v18_raw_collinearity <- ggplot(
 print(p_v18_raw_collinearity)
 
 ggsave(
-  "~/Desktop/replot/global_weathering_input/out-v18/p_v18_raw_collinearity.pdf",
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "p_v18_raw_collinearity.pdf"),
   plot = p_v18_raw_collinearity,
   width = 8,
   height = 6.5,
@@ -2302,7 +2308,7 @@ print(p_v18_module_collinearity)
 
 
 ggsave(
-  "~/Desktop/replot/global_weathering_input/out-v18/p_v18_module_collinearity.pdf",
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "p_v18_module_collinearity.pdf"),
   plot = p_v18_module_collinearity,
   width = 8,
   height = 6.5,
@@ -2506,7 +2512,7 @@ p_v18_mc_rank_agreement <- ggplot(
 print(p_v18_mc_rank_agreement)
 
 ggsave(
-  "~/Desktop/replot/global_weathering_input/out-v18/p_v18_mc_rank_agreement.pdf",
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "p_v18_mc_rank_agreement.pdf"),
   plot = p_v18_mc_rank_agreement,
   width = 6.5,
   height = 4.5,
@@ -2701,7 +2707,7 @@ print(p_v18_site_rank_stability)
 
 
 ggsave(
-  "~/Desktop/replot/global_weathering_input/out-v18/p_v18_site_rank_stability.pdf",
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "p_v18_site_rank_stability.pdf"),
   plot = p_v18_site_rank_stability,
   width = 6,
   height = 5,
@@ -2903,7 +2909,7 @@ library(ggnewscale)
 
 # 2. Output directory
 
-fig_output_dir <- "~/Desktop/replot/global_weathering_input/v18_figure_outputs"
+fig_output_dir <- file.path(data_dir, "Desktop", "replot", "global_weathering_input", "v18_figure_outputs")
 dir.create(fig_output_dir, showWarnings = FALSE, recursive = TRUE)
 
 # 3. Map extent
@@ -2913,7 +2919,7 @@ ylim_use <- c(-56, 61.5)
 
 # 4. Aridity background
 
-aridity_bg_path <- "~/Desktop/replot/global_weathering/background_layers/global_aridity_classes_AI_lt_050_v31_lowres_df_land_only_latcrop.rds"
+aridity_bg_path <- file.path(data_dir, "Desktop", "replot", "global_weathering", "background_layers", "global_aridity_classes_AI_lt_050_v31_lowres_df_land_only_latcrop.rds")
 
 if (file.exists(aridity_bg_path)) {
   
@@ -2936,7 +2942,7 @@ if (file.exists(aridity_bg_path)) {
   
 } else {
   
-  ai_path <- "~/Desktop/replot/global_weathering/aridity_pet/7504448/Global-AI_ET0__annual_v3_1/ai_v31_yr.tif"
+  ai_path <- file.path(data_dir, "Desktop", "replot", "global_weathering", "aridity_pet", "7504448", "Global-AI_ET0__annual_v3_1", "ai_v31_yr.tif")
   
   ai <- terra::rast(ai_path)
   ai_range <- terra::global(ai, range, na.rm = TRUE)
@@ -3601,7 +3607,7 @@ library(grid)
 # Right text   = P(> anchor)
 
 
-fig_output_dir <- "~/Desktop/replot/global_weathering_input/v18_figure_outputs"
+fig_output_dir <- file.path(data_dir, "Desktop", "replot", "global_weathering_input", "v18_figure_outputs")
 dir.create(fig_output_dir, showWarnings = FALSE, recursive = TRUE)
 
 
@@ -3902,7 +3908,7 @@ print(fig7b_ranked_v18)
 
 
 ggsave(
-  "~/Desktop/replot/global_weathering_input/out-v18/fig7b.pdf",
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "fig7b.pdf"),
   plot = fig7b_ranked_v18,
   width = 6.5,
   height = 5
@@ -3939,7 +3945,7 @@ library(grid)
 # 1. Output directory
 
 
-fig_output_dir <- "~/Desktop/replot/global_weathering_input/v18_figure_outputs"
+fig_output_dir <- file.path(data_dir, "Desktop", "replot", "global_weathering_input", "v18_figure_outputs")
 dir.create(fig_output_dir, showWarnings = FALSE, recursive = TRUE)
 
 
@@ -4302,7 +4308,7 @@ fig7c_heatmap_v18 <- ggplot(
 print(fig7c_heatmap_v18)
 
 ggsave(
-  "~/Desktop/replot/global_weathering_input/out-v18/fig7c-1.pdf",
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "fig7c-1.pdf"),
   plot = fig7c_heatmap_v18,
   width = 6,
   height = 7
@@ -4357,7 +4363,7 @@ library(grid)
 
 # 1. Output directory
 
-fig_output_dir <- "~/Desktop/replot/global_weathering_input/v18_figure_outputs"
+fig_output_dir <- file.path(data_dir, "Desktop", "replot", "global_weathering_input", "v18_figure_outputs")
 dir.create(fig_output_dir, showWarnings = FALSE, recursive = TRUE)
 
 # 2. Input checks
@@ -4716,7 +4722,7 @@ fig7c_heatmap_v18_portrait <- ggplot(
 
 
 ggsave(
-  "~/Desktop/replot/global_weathering_input/out-v18/fig7c.pdf",
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "fig7c.pdf"),
   plot = fig7c_heatmap_v18_portrait,
   width = 8,
   height = 5
@@ -4768,7 +4774,7 @@ library(patchwork)
 
 # 2. Output directory
 
-fig_output_dir <- "~/Desktop/replot/global_weathering_input/v18_figure_outputs"
+fig_output_dir <- file.path(data_dir, "Desktop", "replot", "global_weathering_input", "v18_figure_outputs")
 dir.create(fig_output_dir, showWarnings = FALSE, recursive = TRUE)
 
 
@@ -5313,7 +5319,7 @@ if (any(is.na(required_substrate_raw))) {
 p <- p_s15a + theme(axis.line = element_line(colour = "#333333", linewidth = 0.45))
 
 ggsave(
-  "~/Desktop/replot/global_weathering_input/out-v18/s1.pdf",
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "s1.pdf"),
   plot = p,
   width = 6,
   height = 5,
@@ -5429,7 +5435,7 @@ if (is.null(climate_diag_df)) {
 p2 <- p_s15b + theme(axis.line = element_line(colour = "#333333", linewidth = 0.45))
 p2
 ggsave(
-  "~/Desktop/replot/global_weathering_input/out-v18/s2.pdf",
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "s2.pdf"),
   plot = p2,
   width = 6,
   height = 5,
@@ -5765,7 +5771,7 @@ if (is.null(climate_diag_df)) {
 }
 
 ggsave(
-  "~/Desktop/replot/global_weathering_input/out-v18/s3.pdf",
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "s3.pdf"),
   plot = p_s15c,
   width = 8,
   height = 5,
@@ -6031,7 +6037,7 @@ print(p_s15d)
 p_s15d
 
 ggsave(
-  "~/Desktop/replot/global_weathering_input/out-v18/s4.pdf",
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "s4.pdf"),
   plot = p_s15d,
   width = 4,
   height = 7,
@@ -6356,7 +6362,7 @@ p_s16a <- ggplot(
 print(p_s16a)
 
 ggsave(
-  "~/Desktop/replot/global_weathering_input/out-v18/s16a.pdf",
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "s16a.pdf"),
   plot = p_s16a,
   width = 6,
   height = 5,
@@ -6618,7 +6624,7 @@ print(p_s16b)
 
 p_s16b
 ggsave(
-  "~/Desktop/replot/global_weathering_input/out-v18/s16b.pdf",
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "s16b.pdf"),
   plot = p_s16b,
   width = 6,
   height = 5,
@@ -6717,7 +6723,7 @@ p_s16c <- ggplot(
 p_s16c
 
 ggsave(
-  "~/Desktop/replot/global_weathering_input/out-v18/s15g.pdf",
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "s15g.pdf"),
   plot = p_s16c,
   width = 7,
   height = 5,
@@ -6828,7 +6834,7 @@ p_s16d <- ggplot(
 p_s16d
 
 ggsave(
-  "~/Desktop/replot/global_weathering_input/out-v18/s16c.pdf",
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "s16c.pdf"),
   plot = p_s16d,
   width = 6,
   height = 5,
@@ -7495,12 +7501,12 @@ library(grid)
 # 0. Output directories
 
 if (!exists("output_dir")) {
-  output_dir <- "~/Desktop/replot/global_weathering_input/v18_model_outputs"
+  output_dir <- file.path(data_dir, "Desktop", "replot", "global_weathering_input", "v18_model_outputs")
   dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 }
 
 if (!exists("fig_output_dir")) {
-  fig_output_dir <- "~/Desktop/replot/global_weathering_input/v18_figure_outputs"
+  fig_output_dir <- file.path(data_dir, "Desktop", "replot", "global_weathering_input", "v18_figure_outputs")
   dir.create(fig_output_dir, showWarnings = FALSE, recursive = TRUE)
 }
 
@@ -8021,7 +8027,7 @@ p_v18_component_ablation_rank_shift <- ggplot(
 print(p_v18_component_ablation_rank_shift)
 
 ggsave(
-  file.path('~/Desktop/replot/global_weathering_input/out-v18', "p_v18_component_ablation_rank_shift.pdf"),
+  file.path(data_dir, "Desktop", "replot", "global_weathering_input", "out-v18", "p_v18_component_ablation_rank_shift.pdf"),
   plot = p_v18_component_ablation_rank_shift,
   width = 8,
   height = 5,
@@ -8111,12 +8117,12 @@ library(grid)
 # 0. Output directories
 
 if (!exists("output_dir")) {
-  output_dir <- "~/Desktop/replot/global_weathering_input/v18_model_outputs"
+  output_dir <- file.path(data_dir, "Desktop", "replot", "global_weathering_input", "v18_model_outputs")
   dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 }
 
 if (!exists("fig_output_dir")) {
-  fig_output_dir <- "~/Desktop/replot/global_weathering_input/v18_figure_outputs"
+  fig_output_dir <- file.path(data_dir, "Desktop", "replot", "global_weathering_input", "v18_figure_outputs")
   dir.create(fig_output_dir, showWarnings = FALSE, recursive = TRUE)
 }
 

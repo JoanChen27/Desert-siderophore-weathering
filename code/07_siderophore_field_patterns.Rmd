@@ -28,8 +28,8 @@ library(broom)
 # 1. Paths
 
 
-data_dir <- "~/Desktop/replot/culture/field-isolation/strain/fegenie_summary/independent315_summary"
-out_dir  <- file.path(data_dir, "figures")
+fegenie_dir <- file.path(data_dir, "Desktop", "replot", "culture", "field-isolation", "strain", "fegenie_summary", "independent315_summary")
+out_dir  <- file.path(fegenie_dir, "figures")
 
 dir.create(
   out_dir,
@@ -38,17 +38,17 @@ dir.create(
 )
 
 master_file <- file.path(
-  data_dir,
+  fegenie_dir,
   "FeGenie_independent315_sample_master.tsv"
 )
 
 rpkm_file <- file.path(
-  data_dir,
+  fegenie_dir,
   "FeGenie_independent315_centroid_RPKM_matrix.tsv"
 )
 
 family_file <- file.path(
-  data_dir,
+  fegenie_dir,
   "FeGenie_centroid_to_family.tsv"
 )
 
@@ -56,7 +56,7 @@ family_file <- file.path(
 
 
 metadata <- read.table(
-  "~/Desktop/replot/culture/field-isolation/strain/metadata.txt",
+  file.path(data_dir, "Desktop", "replot", "culture", "field-isolation", "strain", "metadata.txt"),
   header = TRUE,
   sep = "",
   stringsAsFactors = FALSE,
@@ -743,7 +743,7 @@ panel_A
 panel_B
 panel_C
 
-ggsave(filename = '~/Desktop/replot/culture/field-isolation/strain/field-siderophore.pdf',width = 11, height = 5)  
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "field-isolation", "strain", "field-siderophore.pdf"),width = 11, height = 5)  
 ```
 
 ## 7.2 F8 DFOE-associated gene homologues
@@ -757,7 +757,7 @@ library(broom)
 # 1. Files
 
 setwd(
-  "~/Desktop/replot/culture/field-isolation/strain"
+  file.path(data_dir, "Desktop", "replot", "culture", "field-isolation", "strain")
 )
 
 master_file <- paste0(
@@ -1162,7 +1162,7 @@ DFOE_figure <- ggplot(
 
 print(DFOE_figure)
 
-ggsave(filename = '~/Desktop/replot/culture/field-isolation/strain/f8-field-gene.pdf',width = 11, height = 2.5)  
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "field-isolation", "strain", "f8-field-gene.pdf"),width = 11, height = 2.5)  
 ```
 
 ## 7.3 Field DFOE concentration
@@ -1333,7 +1333,7 @@ ggsave(filename = '~/Desktop/replot/culture/field-isolation/strain/f8-field-gene
    
    
    
-   ggsave(filename = '~/Desktop/replot/culture/field-isolation/strain/siderophore-field.pdf',
+   ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "field-isolation", "strain", "siderophore-field.pdf"),
           width = 4, height = 3) 
    
    
@@ -1429,13 +1429,13 @@ library(broom)
 # 1. Files and parameters
 
 
-input_file <- paste0(
-  "~/Desktop/replot/culture/field-84-2020/",
+input_file <- file.path(
+  data_dir, "Desktop", "replot", "culture", "field-84-2020",
   "dtpa-field.txt"
 )
 
-output_dir <- paste0(
-  "~/Desktop/replot/culture/field-84-2020/",
+output_dir <- file.path(
+  data_dir, "Desktop", "replot", "culture", "field-84-2020",
   "dtpa-field-figures"
 )
 
@@ -1867,7 +1867,7 @@ DTPA_figure <- ggplot(
 
 print(DTPA_figure)
 
-ggsave(filename = '~/Desktop/replot/culture/field-isolation/strain/DTPA-field.pdf',width = 13, height = 5)  
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "field-isolation", "strain", "DTPA-field.pdf"),width = 13, height = 5)  
 ```
 
 
@@ -1883,7 +1883,7 @@ library(lubridate)
 library(patchwork)
 
 data <- read.delim(
-  "~/Desktop/replot/global_weathering/worldclim/Alxa_20250510_20250810_daily_climate_POWER.csv",
+  file.path(data_dir, "Desktop", "replot", "global_weathering", "worldclim", "Alxa_20250510_20250810_daily_climate_POWER.csv"),
   stringsAsFactors = FALSE,
   check.names = FALSE,
   header = TRUE,
@@ -2022,7 +2022,7 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 
-data <- read.delim('~/Desktop/replot/culture/field-experiment/PND/t-s-plot.txt',
+data <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "PND", "t-s-plot.txt"),
                    stringsAsFactors = FALSE, check.names = FALSE,
                    header = TRUE, sep = "\t")
 
@@ -2108,7 +2108,7 @@ p_KS <- df_sum %>%
 
 p_KS
 
-ggsave(filename = "~/Desktop/replot/culture/field-experiment/PND/ks-indoor.pdf", width = 5,height =  3.5)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "PND", "ks-indoor.pdf"), width = 5,height =  3.5)
 
 library(dplyr)
 library(emmeans)
@@ -2117,7 +2117,7 @@ library(lmerTest)
 
 # 读入数据
 data <- read.delim(
-  "~/Desktop/replot/culture/field-experiment/PND/t-s-plot.txt",
+  file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "PND", "t-s-plot.txt"),
   stringsAsFactors = FALSE, check.names = FALSE,
   header = TRUE, sep = "\t"
 )
@@ -2154,11 +2154,11 @@ pairs_KS
 ```{r validation-particle-size}
 # indoor
   library(tidyverse)
- df <- read.delim('~/Desktop/replot/culture/field-experiment/PND/p3-os-wt.txt',
+ df <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "PND", "p3-os-wt.txt"),
                    stringsAsFactors = FALSE, check.names = FALSE,
                    header = T, sep = "\t")
 # field
-  df <- read.delim('~/Desktop/replot/culture/field-experiment/PND/outdoor-os-wt-p3.txt',
+  df <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "PND", "outdoor-os-wt-p3.txt"),
                    stringsAsFactors = FALSE, check.names = FALSE,
                    header = T, sep = "\t")
   
@@ -2328,7 +2328,7 @@ pairs_KS
   library(patchwork)
   p_oe + p_wt + plot_layout(ncol = 2, widths = c(1, 1))
   
-  ggsave(filename = "~/Desktop/replot/culture/field-experiment/PND/outdoor-wt-0-12-T.pdf", width = 5, height = 3)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "PND", "outdoor-wt-0-12-T.pdf"), width = 5, height = 3)
   
   
   box_colors   <- c(
@@ -2415,7 +2415,7 @@ pairs_KS
   print(p_combined)
 
   
-  ggsave(filename = "~/Desktop/replot/culture/field-experiment/PND/indoor-wt-os-0-12.pdf", width = 9, height = 3)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "PND", "indoor-wt-os-0-12.pdf"), width = 9, height = 3)
   
   # 如需导出每个直径点的 p 值/FDR 数据用于补充表：
   # comp_oe <- boot_delta_ci_p(df, "oe"); write.csv(comp_oe$ci, "OE_delta_p_FDR.csv", row.names = FALSE)
@@ -2478,10 +2478,10 @@ library(dplyr)
 library(ggplot2)
 library(patchwork)
 
-df <- read.delim('~/Desktop/replot/culture/PMA/indoor/copies-indoor.txt',
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "PMA", "indoor", "copies-indoor.txt"),
                  stringsAsFactors = FALSE, check.names = FALSE,
                  header = TRUE, sep = "\t")
-df <- read.delim('~/Desktop/replot/culture/PMA/field/copies-field.txt',
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "PMA", "field", "copies-field.txt"),
                  stringsAsFactors = FALSE, check.names = FALSE,
                  header = TRUE, sep = "\t")
 
@@ -2748,9 +2748,9 @@ p_field <-
 
 p_field
 
-ggsave(filename = "~/Desktop/replot/culture/PMA/field/PMA-si.pdf", width = 7, height = 7)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "PMA", "field", "PMA-si.pdf"), width = 7, height = 7)
 
-ggsave(filename = "~/Desktop/replot/culture/PMA/indoor/PMA-si.pdf", width = 7, height = 7)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "PMA", "indoor", "PMA-si.pdf"), width = 7, height = 7)
 
 
 ## PMA统计分析 
@@ -2767,7 +2767,7 @@ library(tibble)
 # Read data
 
 df <- read.delim(
-  "~/Desktop/replot/culture/PMA/indoor/copies-indoor.txt",
+  file.path(data_dir, "Desktop", "replot", "culture", "PMA", "indoor", "copies-indoor.txt"),
   stringsAsFactors = FALSE,
   check.names = FALSE,
   header = TRUE,
@@ -2775,7 +2775,7 @@ df <- read.delim(
 )
 
 df <- read.delim(
-  "~/Desktop/replot/culture/PMA/field/copies-field.txt",
+  file.path(data_dir, "Desktop", "replot", "culture", "PMA", "field", "copies-field.txt"),
   stringsAsFactors = FALSE,
   check.names = FALSE,
   header = TRUE,
@@ -3004,7 +3004,7 @@ day_by_group_sig
 library(dplyr)
 library(ggplot2)
 
-data <- read.delim('~/Desktop/replot/culture/field-experiment/target-dfoe/field_dfoe.txt',
+data <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "target-dfoe", "field_dfoe.txt"),
                    stringsAsFactors = FALSE, check.names = FALSE,
                    header = TRUE, sep = "\t")
 
@@ -3138,7 +3138,7 @@ p <- ggplot(plot_df, aes(x = day, y = Con, fill = group)) +
 p
 
 
-#ggsave(filename = "~/Desktop/replot/culture/PMA/indoor/dfoe.pdf", width = 5,height = 4)
+#ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "PMA", "indoor", "dfoe.pdf"), width = 5,height = 4)
 ```
 
 ## 9.6 Sand-surface alteration
@@ -3151,12 +3151,12 @@ library(rstatix)
 
 # Read data
 
-data <- read.delim('~/Desktop/replot/culture/field-experiment/cq-eds-20260430/sem-field.txt',
+data <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "cq-eds-20260430", "sem-field.txt"),
                    stringsAsFactors = FALSE, check.names = FALSE,
                    header = TRUE, sep = "\t")
 
 data <- read.delim(
-  "~/Desktop/replot/culture/field-experiment/cq-eds-20260430/sem-indoor.txt",
+  file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "cq-eds-20260430", "sem-indoor.txt"),
   stringsAsFactors = FALSE,
   check.names = FALSE,
   header = TRUE,
@@ -3386,7 +3386,7 @@ p_combined
 # Save
 
 ggsave(
-  "~/Desktop/replot/culture/field-experiment/cq-eds-20260430/sem-indoor_combined.pdf",
+  file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "cq-eds-20260430", "sem-indoor_combined.pdf"),
   p_combined,
   width = 4,
   height = 7
@@ -3439,7 +3439,7 @@ library(dplyr)
    library(ggplot2)
    
    data <- read.delim(
-     '~/Desktop/replot/culture/field-experiment/ACBD/DTPA-plot.txt',
+     file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "DTPA-plot.txt"),
      stringsAsFactors = FALSE,
      check.names = FALSE,
      header = TRUE,
@@ -3557,7 +3557,7 @@ library(dplyr)
    print(p_dtpa)
    
    ggsave(
-     "~/Desktop/replot/culture/field-experiment/ACBD/DTPA_Fe_facet_by_type.pdf",
+     file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "DTPA_Fe_facet_by_type.pdf"),
      p_dtpa,
      width = 10,
      height = 5
@@ -3569,7 +3569,7 @@ library(dplyr)
    library(multcompView)
    
    data <- read.delim(
-     '~/Desktop/replot/culture/field-experiment/ACBD/DTPA-plot.txt',
+     file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "DTPA-plot.txt"),
      stringsAsFactors = FALSE,
      check.names = FALSE,
      header = TRUE,
@@ -3654,7 +3654,7 @@ library(dplyr)
    library(ggplot2)
    
    data <- read.delim(
-     '~/Desktop/replot/culture/field-experiment/ACBD/field-abcd-plot.txt',
+     file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "field-abcd-plot.txt"),
      stringsAsFactors = FALSE,
      check.names = FALSE,
      header = TRUE,
@@ -3770,7 +3770,7 @@ library(dplyr)
    
    
    ggsave(
-     "~/Desktop/replot/culture/field-experiment/ACBD/Fe_log2FC_field.pdf",
+     file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "Fe_log2FC_field.pdf"),
      p_log2fc,
      width = 5,
      height = 3.5
@@ -3781,7 +3781,7 @@ library(dplyr)
    library(ggplot2)
    
    data <- read.delim(
-     '~/Desktop/replot/culture/field-experiment/ACBD/indoor-abcd-plot.txt',
+     file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "indoor-abcd-plot.txt"),
      stringsAsFactors = FALSE,
      check.names = FALSE,
      header = TRUE,
@@ -3789,7 +3789,7 @@ library(dplyr)
    )
    
    data <- read.delim(
-     '~/Desktop/replot/culture/field-experiment/ACBD/indoor-abcd-plot.txt',
+     file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "indoor-abcd-plot.txt"),
      stringsAsFactors = FALSE,
      check.names = FALSE,
      header = TRUE,
@@ -3920,7 +3920,7 @@ library(dplyr)
    print(p_abs)
    
    ggsave(
-     "~/Desktop/replot/culture/field-experiment/ACBD/Fe_absolute_by_stage_indoor.pdf",
+     file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "Fe_absolute_by_stage_indoor.pdf"),
      p_abs,
      width = 14,
      height = 5
@@ -3933,14 +3933,14 @@ library(dplyr)
    library(multcompView)
    
    data <- read.delim(
-     '~/Desktop/replot/culture/field-experiment/ACBD/indoor-abcd-plot.txt',
+     file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "indoor-abcd-plot.txt"),
      stringsAsFactors = FALSE,
      check.names = FALSE,
      header = TRUE,
      sep = "\t"
    )
    
-   data <- read.delim('~/Desktop/replot/culture/field-experiment/ACBD/field-abcd-plot.txt',
+   data <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "field-abcd-plot.txt"),
                       stringsAsFactors = FALSE, check.names = FALSE,
                       header = TRUE, sep = "\t")
    
@@ -4032,14 +4032,14 @@ library(dplyr)
    library(emmeans)
    
    data <- read.delim(
-     '~/Desktop/replot/culture/field-experiment/ACBD/indoor-abcd-plot.txt',
+     file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "indoor-abcd-plot.txt"),
      stringsAsFactors = FALSE,
      check.names = FALSE,
      header = TRUE,
      sep = "\t"
    )
    
-   data <- read.delim('~/Desktop/replot/culture/field-experiment/ACBD/field-abcd-plot.txt',
+   data <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "field-abcd-plot.txt"),
                       stringsAsFactors = FALSE, check.names = FALSE,
                       header = TRUE, sep = "\t")
    
@@ -4106,7 +4106,7 @@ library(dplyr)
    
    write.table(
      anova_tbl,
-     "~/Desktop/replot/culture/field-experiment/ACBD/LMM_log2FC_ANOVA.txt",
+     file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "LMM_log2FC_ANOVA.txt"),
      sep = "\t", quote = FALSE, row.names = FALSE
    )
    
@@ -4122,7 +4122,7 @@ library(dplyr)
    
    write.table(
      as.data.frame(pair_stage_group),
-     "~/Desktop/replot/culture/field-experiment/ACBD/LMM_pairwise_group_within_stage.txt",
+     file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "LMM_pairwise_group_within_stage.txt"),
      sep = "\t", quote = FALSE, row.names = FALSE
    )
    
@@ -4137,7 +4137,7 @@ library(dplyr)
    
    write.table(
      as.data.frame(pair_group_stage),
-     "~/Desktop/replot/culture/field-experiment/ACBD/LMM_pairwise_stage_within_group.txt",
+     file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "LMM_pairwise_stage_within_group.txt"),
      sep = "\t", quote = FALSE, row.names = FALSE
    )
    
@@ -4147,7 +4147,7 @@ library(dplyr)
    library(multcompView)
    
    data <- read.delim(
-     '~/Desktop/replot/culture/field-experiment/ACBD/indoor-abcd-plot.txt',
+     file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "ACBD", "indoor-abcd-plot.txt"),
      stringsAsFactors = FALSE,
      check.names = FALSE,
      header = TRUE,

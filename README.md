@@ -1,6 +1,6 @@
 # Desert-siderophore-weathering
 
-Analysis code for the manuscript **"Microbial siderophore activity can initiate weathering of barren desert sand"** (first author: Qiong Chen).
+Analysis code accompanying the manuscript **"Microbial iron foraging initiates weathering of barren desert sand"** (first author: Qiong Chen).
 
 The study asks whether microbes can directly initiate weathering of barren desert sand, using a 17-year Tengger Desert restoration chronosequence, screening of 805 cultivated isolates, and the *bibC*-dependent desferrioxamine E (DFOE) siderophore pathway of strain F8 (*Pantoea alhagi* / *Mixta alhagi*) with knockout, complementation and overexpression genetics plus 84-day field plots.
 
@@ -10,7 +10,7 @@ All analysis code is in `code/`, numbered in run order (later files may use obje
 
 | File | Content |
 |---|---|
-| `00_setup.R` | Shared package loading — source this first |
+| `00_setup.R` | Shared package loading and the `data_dir` root — source this first |
 | `01_chronosequence_sand_properties.Rmd` | Field chronosequence and sand-matrix properties: physicochemical properties, D50 and hydraulic conductivity, mineral composition and PCA |
 | `02a_community_diversity.Rmd` | Microbial diversity: beta-diversity, alpha diversity, phylogenetic tree, fuzzy C-means clusters |
 | `02b_community_glm_lasso.Rmd` | Community modeling I: GLM regression, graph-based permutation test, AEM, LASSO prediction |
@@ -34,6 +34,8 @@ The underlying datasets are publicly available as described in the manuscript:
 
 - Raw sequencing reads, metagenome-assembled genomes (MAGs), isolate 16S sequences and genomes: ENA under [PRJEB60065](https://www.ebi.ac.uk/ena/browser/view/PRJEB60065), [PRJEB128436](https://www.ebi.ac.uk/ena/browser/view/PRJEB128436) and [PRJEB128464](https://www.ebi.ac.uk/ena/browser/view/PRJEB128464)
 - LC–MS metabolomics data: MetaboLights under [MTBLS15530](https://www.ebi.ac.uk/metabolights/MTBLS15530)
+
+Local analysis files stay in the usual Desktop and Documents folders. `code/00_setup.R` sets `data_dir` from `DESERT_DATA_DIR`, or from the home directory when that variable is unset, so the scripts resolve `Desktop/` and `Documents/` exactly as before and no environment variable is required. To use a copy of the same layout, set `DESERT_DATA_DIR` to the directory that contains `Desktop/` and `Documents/`.
 
 ## Status
 

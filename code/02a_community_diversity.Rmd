@@ -38,7 +38,7 @@ suppressPackageStartupMessages({
 })
 
 # 1) Load data 
-infile <- "~/Desktop/replot/meta/species_all_acpm.txt"
+infile <- file.path(data_dir, "Desktop", "replot", "meta", "species_all_acpm.txt")
 
 df <- read.delim(
   infile,
@@ -251,7 +251,7 @@ stat_ellipse(
 library(adespatial)   
 library(Matrix)
 
-mydata <- read.delim('~/Desktop/replot/diversity/species.all.acpm.txt',
+mydata <- read.delim(file.path(data_dir, "Desktop", "replot", "diversity", "species.all.acpm.txt"),
                      stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                      header = T, sep = "\t")
 #table(mydata$type)
@@ -310,13 +310,13 @@ result_all$type <- c(rep('bacteria',7021),rep('archaea',7021),rep('fungi',7021),
 
 result_all <- rbind(result_all_bacteria,result_all_archaea,result_all_fungi,result_all_animal,result_all_plant)
 
-write.table(result_all, "~/Desktop/replot/beta/si_beta_bacteria.txt", 
+write.table(result_all, file.path(data_dir, "Desktop", "replot", "beta", "si_beta_bacteria.txt"), 
             sep = '\t', col.names = NA, quote = FALSE)
 
 
 # Ternary plot
 library(ggtern)
-mydata <- read.delim('~/Desktop/replot/beta/di_beta_bacteria.txt',
+mydata <- read.delim(file.path(data_dir, "Desktop", "replot", "beta", "di_beta_bacteria.txt"),
                      stringsAsFactors = FALSE, check.names = FALSE,
                      header = T, sep = "\t")
 
@@ -337,11 +337,11 @@ ggtern(mydata, aes(Similarity, Repl, RichDiff, color=type, group=type)) +
   theme(axis.text.x = element_text(colour = 'black')) +
   theme(axis.text.y = element_text(colour = 'black'))
   
-ggsave(filename = "~/Desktop/replot/di_beta_decompose.pdf",width = 18,height = 6) 
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "di_beta_decompose.pdf"),width = 18,height = 6) 
 
 
 # introduce dominant factor
-mydata <- read.delim('~/Desktop/replot/beta/si_beta_bacteria.txt',
+mydata <- read.delim(file.path(data_dir, "Desktop", "replot", "beta", "si_beta_bacteria.txt"),
                      stringsAsFactors = FALSE, check.names = FALSE,
                      header = T, sep = "\t")
 
@@ -366,7 +366,7 @@ ggtern(mydata,aes(Similarity, Repl, RichDiff, color=dominating, group=type)) +
   scale_fill_manual(values=c('#90CFF3','#4B7438','#D1DA3E'))+
   facet_wrap( ~ type,scales="free", ncol=5) 
 
-ggsave(filename = "~/Desktop/replot/diversity/beta/si_beta_decompose.pdf",width = 27,height = 5.8) 
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "diversity", "beta", "si_beta_decompose.pdf"),width = 27,height = 5.8) 
 
 bacteria <- subset(mydata, type=='bacteria')
 table(bacteria$dominating)
@@ -962,7 +962,7 @@ result <- data.frame(shannon_index, simpson, richness)
 
 # use alpha diversity as an example
 
- mydata <- read.delim('~/Desktop/replot/diversity/alpha/species_alpha.txt',
+ mydata <- read.delim(file.path(data_dir, "Desktop", "replot", "diversity", "alpha", "species_alpha.txt"),
                       sep = '\t',stringsAsFactors = FALSE, check.names = FALSE)
  stat_result <- krus_BF(data = mydata, groups = c('Type'), 
                         values = c('Bacteria','Fungi','Archaea','Viridiplantae','Metazoa','Viruses'), p = 0.05)
@@ -983,9 +983,9 @@ result <- data.frame(shannon_index, simpson, richness)
  p1 <- stat_result$plot_g 
  p2 <- stat_result$plot_m 
  
- # ggsave(filename = '~/Desktop/replot/figure 1/cgf.nutrient.m4.pdf', width = 32, height = 10)
- # ggsave(filename = '~/Desktop/replot/figure 1/see.nutrient.pdf', width = 25, height = 12)
- ggsave(filename = '~/Desktop/replot/diversity/alpha/cgf_alpha.pdf', width = 25, height = 10)
+ # ggsave(filename = file.path(data_dir, "Desktop", "replot", "figure 1", "cgf.nutrient.m4.pdf"), width = 32, height = 10)
+ # ggsave(filename = file.path(data_dir, "Desktop", "replot", "figure 1", "see.nutrient.pdf"), width = 25, height = 12)
+ ggsave(filename = file.path(data_dir, "Desktop", "replot", "diversity", "alpha", "cgf_alpha.pdf"), width = 25, height = 10)
  
 
 ```
@@ -1004,18 +1004,18 @@ result <- data.frame(shannon_index, simpson, richness)
       library(ggstar)
       library(TDbook)
 
-#tr1 <- read.tree('~/Desktop/replot/c_means/species/sp.tar.tree.nwk')
+#tr1 <- read.tree(file.path(data_dir, "Desktop", "replot", "c_means", "species", "sp.tar.tree.nwk"))
 
 numtip <- length(tr1$tip.label)
 #numtip
 
 dat1 <- data.frame(ID=tr1$tip.label)
 
-write.table(dat1,'~/Desktop/replot/c_means/species/idlabel.sp.txt',
+write.table(dat1,file.path(data_dir, "Desktop", "replot", "c_means", "species", "idlabel.sp.txt"),
             sep = '\t', col.names = NA, quote = FALSE)
 
 #plot
-df <- read.delim('~/Desktop/replot/c_means/species/idlabel.sp.txt',stringsAsFactors = FALSE, check.names = FALSE,
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "c_means", "species", "idlabel.sp.txt"),stringsAsFactors = FALSE, check.names = FALSE,
                  header = T, sep = "\t") # included taxon level info
 table(df$phylum)
 table(df$Type)
@@ -1025,8 +1025,8 @@ nrow(df)
 df1 <- subset(df,phylum_a == 'd')
 table(df1$group)
 
-tr <- read.tree('~/Desktop/replot/c_means/species/sp.tar.tree.nwk')
-#dat1 <- read.delim('~/Desktop/replot/phylo/idlabel.txt',stringsAsFactors = FALSE, check.names = FALSE,
+tr <- read.tree(file.path(data_dir, "Desktop", "replot", "c_means", "species", "sp.tar.tree.nwk"))
+#dat1 <- read.delim(file.path(data_dir, "Desktop", "replot", "phylo", "idlabel.txt"),stringsAsFactors = FALSE, check.names = FALSE,
 #                  header = T, sep = "\t")
 #table(dat1['phylum'])
 
@@ -1089,13 +1089,13 @@ p3 <- p2 +  new_scale_fill() +
 
 p3
 
-ggsave(filename = '~/Desktop/replot/c_means/species/si.diff_sp_tree.pdf',width = 7,height = 5)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "c_means", "species", "si.diff_sp_tree.pdf"),width = 7,height = 5)
 
 
-ggsave(filename = '~/Desktop/replot/crisper/17.tree.pdf',width = 7,height = 5)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "crisper", "17.tree.pdf"),width = 7,height = 5)
 
 # create legend separately, as the legend from above was kind of ugly
-df <- read.delim('~/Desktop/replot/c_means/species/legend.txt',stringsAsFactors = FALSE, check.names = FALSE,
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "c_means", "species", "legend.txt"),stringsAsFactors = FALSE, check.names = FALSE,
                  header = T, sep = "\t")
 df$phylum <- factor(df$phylum, levels = df$phylum) 
 
@@ -1190,7 +1190,7 @@ df.melt = reshape2::melt(df.scale.group, id.vars = c("cluster","membership", "ta
 df.melt$variable = factor(df.melt$variable)
 df.melt$cluster = factor(df.melt$cluster)
 
-# write.table(df.scale.group, "~/Desktop/replot/metabo/c-means-si.txt",
+# write.table(df.scale.group, file.path(data_dir, "Desktop", "replot", "metabo", "c-means-si.txt"),
 #             sep = '\t', col.names = NA, quote = FALSE)
 
 

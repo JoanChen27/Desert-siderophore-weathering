@@ -21,7 +21,7 @@ source("00_setup.R")
 ```{r sand-physicochemical-properties}
 # Figure 1C
 # 1) data input
-df <- read.delim('~/Desktop/replot/metadata_nutrients/SD-SI.txt',
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "metadata_nutrients", "SD-SI.txt"),
                  stringsAsFactors = FALSE, check.names = FALSE,
                  header = TRUE, sep = "\t")
 df <- df[, 1:46]
@@ -294,7 +294,7 @@ p_F
 
 ```{r field-particle-size-D50-ks}
 # Figure 1C
-df <- read.delim('~/Desktop/replot/metadata_nutrients/SD-SI.txt',
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "metadata_nutrients", "SD-SI.txt"),
                  stringsAsFactors = FALSE, check.names = FALSE,
                  header = TRUE, sep = "\t")
 df_selected <- df %>%
@@ -432,7 +432,7 @@ print(field_size_figure)
    # 1. Read data
 
     mydata <- read.delim(
-      "~/Desktop/replot/culture/field-experiment/XRD/2020_field.txt",
+      file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "XRD", "2020_field.txt"),
       stringsAsFactors = FALSE,
       check.names = FALSE,
       header = TRUE,

@@ -20,7 +20,7 @@ source("00_setup.R")
 # to detect valuables changed with ages, here is one of the example with figure 2C
 library(pscl)
 library(MASS)
-data <- read.delim('~/Desktop/replot/c_means/species/si_species.txt',row.names = 1,
+data <- read.delim(file.path(data_dir, "Desktop", "replot", "c_means", "species", "si_species.txt"),row.names = 1,
                    sep = '\t',stringsAsFactors = FALSE, check.names = FALSE)
 data <- data[1:217,]
 data <- as.data.frame(apply(data,2,as.numeric))
@@ -68,7 +68,7 @@ final_result <- cbind(results,padjust = p.adjust(results[,"p_value"], method="BH
 
 table(final_result$padjust < 0.05)
 
-#write.table(final_result, '~/Desktop/replot/metabo//si_species_glm.txt',sep="\t", col.names = NA,quote = FALSE)
+#write.table(final_result, file.path(data_dir, "Desktop", "replot", "metabo", "", "si_species_glm.txt"),sep="\t", col.names = NA,quote = FALSE)
 
 # visualization
 # mydata <- final_result
@@ -140,16 +140,16 @@ table(final_result$padjust < 0.05)
    
    # change data loaded way
    
-   write.table(qiimex@tax_table,'~/Desktop/plot/graph/tax.table.txt',
+   write.table(qiimex@tax_table,file.path(data_dir, "Desktop", "plot", "graph", "tax.table.txt"),
                sep = '\t', col.names = NA, quote = FALSE)
    
-   otu.table <- read.delim('~/Desktop/plot/graph/otu.table.txt',
+   otu.table <- read.delim(file.path(data_dir, "Desktop", "plot", "graph", "otu.table.txt"),
                            stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                            header = T, sep = "\t")
- sam.table <- read.delim('~/Desktop/plot/graph/sam.table.txt',
+ sam.table <- read.delim(file.path(data_dir, "Desktop", "plot", "graph", "sam.table.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                          header = T, sep = "\t")
- tax.table <- read.delim('~/Desktop/plot/graph/tax.table.txt',
+ tax.table <- read.delim(file.path(data_dir, "Desktop", "plot", "graph", "tax.table.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                          header = T, sep = "\t")
  class(otu.table)
@@ -174,48 +174,48 @@ table(final_result$padjust < 0.05)
   # own data
  # si
  
- otu.table <- read.delim('~/Desktop/plot/graph/SI/sp_si.txt',
+ otu.table <- read.delim(file.path(data_dir, "Desktop", "plot", "graph", "SI", "sp_si.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                          header = T, sep = "\t")
- sam.table <- read.delim('~/Desktop/plot/graph/SI/sam_si.txt',
+ sam.table <- read.delim(file.path(data_dir, "Desktop", "plot", "graph", "SI", "sam_si.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                          header = T, sep = "\t")
- tax.table <- read.delim('~/Desktop/plot/graph/SI/tree.txt',
+ tax.table <- read.delim(file.path(data_dir, "Desktop", "plot", "graph", "SI", "tree.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                          header = T, sep = "\t")
  
  # fence
- otu.table <- read.delim('~/Desktop/plot/graph/SI/sp_fence.txt',
+ otu.table <- read.delim(file.path(data_dir, "Desktop", "plot", "graph", "SI", "sp_fence.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                          header = T, sep = "\t")
- sam.table <- read.delim('~/Desktop/plot/graph/SI/sam_fence.txt',
+ sam.table <- read.delim(file.path(data_dir, "Desktop", "plot", "graph", "SI", "sam_fence.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                          header = T, sep = "\t")
  
  
  #di
- otu.table <- read.delim('~/Desktop/plot/graph/DI/sp_di.txt',
+ otu.table <- read.delim(file.path(data_dir, "Desktop", "plot", "graph", "DI", "sp_di.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                          header = T, sep = "\t")
- sam.table <- read.delim('~/Desktop/plot/graph/DI/sam_di.txt',
+ sam.table <- read.delim(file.path(data_dir, "Desktop", "plot", "graph", "DI", "sam_di.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                          header = T, sep = "\t")
- tax.table <- read.delim('~/Desktop/plot/graph/SI/tree.txt',
+ tax.table <- read.delim(file.path(data_dir, "Desktop", "plot", "graph", "SI", "tree.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                          header = T, sep = "\t")
  
  #see
- otu.table <- read.delim('~/Desktop/plot/graph/see/sp_see.txt',
+ otu.table <- read.delim(file.path(data_dir, "Desktop", "plot", "graph", "see", "sp_see.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                          header = T, sep = "\t")
- sam.table <- read.delim('~/Desktop/plot/graph/see/sam_see.txt',
+ sam.table <- read.delim(file.path(data_dir, "Desktop", "plot", "graph", "see", "sam_see.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                          header = T, sep = "\t")
  #sd
- otu.table <- read.delim('~/Desktop/plot/graph/see/sp_sd.txt',
+ otu.table <- read.delim(file.path(data_dir, "Desktop", "plot", "graph", "see", "sp_sd.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                          header = T, sep = "\t")
- sam.table <- read.delim('~/Desktop/plot/graph/see/sam_sd.txt',
+ sam.table <- read.delim(file.path(data_dir, "Desktop", "plot", "graph", "see", "sam_sd.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                          header = T, sep = "\t")
  
@@ -240,7 +240,7 @@ table(final_result$padjust < 0.05)
  # the observed number of pure edges.
  plot_permutations(gt,bins=12) + theme_pubr(base_size = 16)
  
- ggsave(filename = '~/Desktop/plot/graph/see/sd.per9e-04.pdf', height = 5, width=5.5)
+ ggsave(filename = file.path(data_dir, "Desktop", "plot", "graph", "see", "sd.per9e-04.pdf"), height = 5, width=5.5)
  
  #When using the graph_perm_test function, a graph is created. This function will plot the graph used
  # for testing with nodes colored by sample type and edges marked as pure or mixed.
@@ -261,7 +261,7 @@ table(final_result$padjust < 0.05)
  plot_test_network(gt) + theme(legend.text=element_text(size=14)) +
    scale_color_manual(values=c("#ffffbf","#e6f598","#abdda4","#66c2a5","#3288bd"), name = "Year")
  
- ggsave(filename = '~/Desktop/plot/graph/SI/si.nn-1.pdf', height = 3, width=3.5)
+ ggsave(filename = file.path(data_dir, "Desktop", "plot", "graph", "SI", "si.nn-1.pdf"), height = 3, width=3.5)
 
 ```
 
@@ -317,9 +317,9 @@ table(final_result$padjust < 0.05)
     aem.out <- aem.time(119, w=weights, moran=TRUE, plot.moran=TRUE)
     # Compute the redundancy analysis (RDA) of the fauna by the matrix of AEM eigenvectors
     # modelling positive temporal correlation
-    species <- read.delim("~/Desktop/replot/aem/species_si_aem.txt", stringsAsFactors = F, header = T, row.names = 1,sep = "\t", check.names = F)
+    species <- read.delim(file.path(data_dir, "Desktop", "replot", "aem", "species_si_aem.txt"), stringsAsFactors = F, header = T, row.names = 1,sep = "\t", check.names = F)
    
-    species <- read.delim("~/Desktop/replot/diversity/beta/si_species_30.txt", stringsAsFactors = F, header = T, row.names = 1,sep = "\t", check.names = F)
+    species <- read.delim(file.path(data_dir, "Desktop", "replot", "diversity", "beta", "si_species_30.txt"), stringsAsFactors = F, header = T, row.names = 1,sep = "\t", check.names = F)
      table(species['year'])
     
     species <- species[,-c(1:2)]
@@ -331,10 +331,10 @@ table(final_result$padjust < 0.05)
     
     View(sel.aem)
     
-    write.table(sel.aem, "~/Desktop/replot/aem/sel.aem.0309.species.30.txt", 
+    write.table(sel.aem, file.path(data_dir, "Desktop", "replot", "aem", "sel.aem.0309.species.30.txt"), 
                 sep = '\t', col.names = NA, quote = FALSE)
     
-    sel.aem <- read.delim('~/Desktop/replot/aem/sel.aem.0309.txt',row.names = 1,
+    sel.aem <- read.delim(file.path(data_dir, "Desktop", "replot", "aem", "sel.aem.0309.txt"),row.names = 1,
                           sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
     
     
@@ -349,7 +349,7 @@ table(final_result$padjust < 0.05)
     
     aem.vector <- data.frame(aem.out$aem)
     View(aem.vector)
-    write.table(aem.vector, "~/Desktop/replot/aem/aem.vector.0309.species.30.txt", 
+    write.table(aem.vector, file.path(data_dir, "Desktop", "replot", "aem", "aem.vector.0309.species.30.txt"), 
                 sep = '\t', col.names = NA, quote = FALSE)
     # to see what aems look like
  
@@ -392,7 +392,7 @@ table(final_result$padjust < 0.05)
     # geom_line(method = "lm", se=FALSE, formula = my.formula,group=1)
     #geom_line(data = aem.polt_melt, aes(x=Group, y=value),group = 1)
     
-    ggsave(filename = '~/Desktop/replot/aem/si.aem.species.30.pdf', width = 15, height = 10)
+    ggsave(filename = file.path(data_dir, "Desktop", "replot", "aem", "si.aem.species.30.pdf"), width = 15, height = 10)
     
     ## another AEM for DI: 479 
 data_frame = data.frame(col1 = letters[1:79],
@@ -426,7 +426,7 @@ View(aem.out)
 
 # Compute the redundancy analysis (RDA) of the fauna by the matrix of AEM eigenvectors
 # modelling positive temporal correlation
-species <- read.delim("~/Desktop/replot/aem/di_genus_aem.txt", stringsAsFactors = F, header = T, row.names = 1,sep = "\t", check.names = F)
+species <- read.delim(file.path(data_dir, "Desktop", "replot", "aem", "di_genus_aem.txt"), stringsAsFactors = F, header = T, row.names = 1,sep = "\t", check.names = F)
 species <- species[,-c(1:2)]
 View(species)
 
@@ -447,9 +447,9 @@ sel.aem <- forward.sel(species.hel, aem.out$aem, nperm=9999, alpha=0.10)
 
 sel.aem
 
-write.table(sel.aem, "~/Desktop/replot/aem/sel.aem.479.txt", 
+write.table(sel.aem, file.path(data_dir, "Desktop", "replot", "aem", "sel.aem.479.txt"), 
             sep = '\t', col.names = NA, quote = FALSE)
-sel.aem <- read.delim('~/Desktop/replot/aem/sel.aem.479.txt',row.names = 1,
+sel.aem <- read.delim(file.path(data_dir, "Desktop", "replot", "aem", "sel.aem.479.txt"),row.names = 1,
                       sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
 # Three models: all AEM selected, then those modelling positive and negative correlation
 aem.select <- sort(sel.aem$order[sel.aem$pval<=0.05])
@@ -502,7 +502,7 @@ ggplot(data = aem.polt_melt,aes(x=Group, y=value)) +
 # geom_line(method = "lm", se=FALSE, formula = my.formula,group=1)
 #geom_line(data = aem.polt_melt, aes(x=Group, y=value),group = 1)
 
-ggsave(filename = '~/Desktop/replot/aem/aem.di.pdf', width = 10, height = 5)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "aem", "aem.di.pdf"), width = 10, height = 5)
 
 ```
 
@@ -512,7 +512,7 @@ ggsave(filename = '~/Desktop/replot/aem/aem.di.pdf', width = 10, height = 5)
 
 library(glmnet)
 library(caret)
-df <- read.delim('~/Desktop/replot/restoration_pre/car_lasso.txt',row.names = 1,
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "car_lasso.txt"),row.names = 1,
                     sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
 
 truth.frame <- data.frame(t(df))
@@ -608,10 +608,10 @@ result_importance <- varImp(model1)
 # ten-fold Cross-validation
 
 #inputdata , continuous dependent variable
-df1 <- read.delim('~/Desktop/replot/restoration_pre/lasso/car_lasso_nodi.txt',row.names = 1,
+df1 <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "lasso", "car_lasso_nodi.txt"),row.names = 1,
                   sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
 
-df2 <- read.delim('~/Desktop/replot/restoration_pre/lasso/car_lasso_nodi.txt',row.names = 1,
+df2 <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "lasso", "car_lasso_nodi.txt"),row.names = 1,
                   sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
 
 df3 <- as.data.frame(apply(df1[-1, ], 2, as.numeric))
@@ -741,7 +741,7 @@ cvnested = function(data.frame, truth.frame, k){ #data.frame to train on, k is f
 performance.result.cv.time = replicate(10, cvnested(data.frame, truth.frame, 5))
 
 result <- as.data.frame(performance.result.cv.time)
-write.table(result,'~/Desktop/replot/restoration_pre/lasso_result.txt',
+write.table(result,file.path(data_dir, "Desktop", "replot", "restoration_pre", "lasso_result.txt"),
             sep = '\t', col.names = NA, quote = FALSE)
 
 
@@ -876,7 +876,7 @@ ggplot_build(p)$data
 
 ggarrange(q, p, ncol = 2, widths=(c(2,2)))
 
-ggsave(filename = '~/Desktop/plot/lasso/genus_no17/si.mauc.performace.factor.pdf', width = 9, height = 4.52)
+ggsave(filename = file.path(data_dir, "Desktop", "plot", "lasso", "genus_no17", "si.mauc.performace.factor.pdf"), width = 9, height = 4.52)
 
 
 
@@ -1026,7 +1026,7 @@ ggplot_build(p)$data
 ggarrange(q, p, ncol = 2, widths=(c(2,2)))
 
 
-ggsave(filename = '~/Desktop/plot/lasso/si.mauc.performace.year.number.pdf', width = 9, height = 4.52)
+ggsave(filename = file.path(data_dir, "Desktop", "plot", "lasso", "si.mauc.performace.year.number.pdf"), width = 9, height = 4.52)
 
 
 # r getting the mean prediction values
@@ -1046,7 +1046,7 @@ for (i in 1:length(performance.result.cv[3,])){
 }
 #plot mean var relationship for probabilities
 dev.new()
-pdf(file = '~/Desktop/plot/lasso/genus_no17/mean-variance-si.pdf', width=7, height=5)
+pdf(file = file.path(data_dir, "Desktop", "plot", "lasso", "genus_no17", "mean-variance-si.pdf"), width=7, height=5)
 par(mfrow=c(2,2))
 plot(apply(spring[,-1], 1, mean),  apply(spring[,-1], 1, var), xlab="mean", ylab="var", main="mean-variance relationship for 11 predictions")
 plot(apply(summer[,-1], 1, mean),  apply(summer[,-1], 1, var),xlab="mean", ylab="var",main="mean-variance relationship for 12 predictions")
@@ -1055,7 +1055,7 @@ plot(apply(winter[,-1], 1, mean),  apply(winter[,-1], 1, var),xlab="mean", ylab=
 dev.off()
 
 dev.new()
-pdf(file = '~/Desktop/plot/lasso/genus_no17/mean-median-si.pdf', width=7, height=5)
+pdf(file = file.path(data_dir, "Desktop", "plot", "lasso", "genus_no17", "mean-median-si.pdf"), width=7, height=5)
 
 par(mfrow=c(2,2))
 plot(apply(spring[,-1], 1, mean),  apply(spring[,-1], 1, median),xlab="mean", ylab="median",main="mean-median relationship for 11 predictions")
@@ -1113,7 +1113,7 @@ pred.internal.values = predict(glmfit, t(data.frame),
 #internal fitting, sanity check
 confusion_table.internal = table(predicted = pred.internal, truth = factor(truth.frame$season))
 confusion_table.internal
-write.table(confusion_table.internal, '~/Desktop/plot/lasso/si_updata/confusion_table_si.txt', sep='\t', col.names = NA, quote = FALSE)
+write.table(confusion_table.internal, file.path(data_dir, "Desktop", "plot", "lasso", "si_updata", "confusion_table_si.txt"), sep='\t', col.names = NA, quote = FALSE)
 
 confusionMatrix(data=factor(pred.internal, levels=c("spring", "summer", "fall","winter")), reference=factor(truth.frame$season), mode = "everything")
 
@@ -1256,7 +1256,7 @@ ggroc(plots.ova, linetype=7, size=1.2, alpha=0.8) + geom_abline(slope=1, interce
   theme(axis.text=element_text(size=16,color = "#1F1F1F"),
         axis.title=element_text(size=16,face="bold"), legend.text=element_text(size=14))
 
-ggsave(filename = '~/Desktop/plot/lasso/si_updata/auc-si.pdf',width = 7, height = 5)
+ggsave(filename = file.path(data_dir, "Desktop", "plot", "lasso", "si_updata", "auc-si.pdf"),width = 7, height = 5)
 
 
 ##multiclass roc plotting pairs
@@ -1342,7 +1342,7 @@ nrow(result_sp)
 selected_genus <- rbind(result_sp, result_su, result_fa, result_w)
 selected_genus$year <- c(rep('spring', 4),rep('summer', 8), rep('fall',4), rep('winter',5))
 
-write.table(selected_genus,'~/Desktop/plot/lasso/genus_no17/selected_genus.txt',
+write.table(selected_genus,file.path(data_dir, "Desktop", "plot", "lasso", "genus_no17", "selected_genus.txt"),
             sep = '\t', col.names = NA, quote = FALSE)
 
 View(selected_genus)
@@ -1361,7 +1361,7 @@ for (i in 1:5){
 
 
 # selected genus
-selected_genus <- read.delim('~/Desktop/plot/lasso/genus_no17/selected_g_ab.txt',row.names = 1,
+selected_genus <- read.delim(file.path(data_dir, "Desktop", "plot", "lasso", "genus_no17", "selected_g_ab.txt"),row.names = 1,
                              sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
 selected_genus$year <- as.factor(selected_genus$year)
 levels(selected_genus$year)
@@ -1433,7 +1433,7 @@ library(patchwork)
 
 p1 + p2 + p3 + p4 + plot_layout(widths = c(1,1), heights = c(1,1))  
 
-ggsave(filename = '~/Desktop/plot/lasso/si_updata/representive.taxo.pdf', width = 10, height = 6)
+ggsave(filename = file.path(data_dir, "Desktop", "plot", "lasso", "si_updata", "representive.taxo.pdf"), width = 10, height = 6)
 
 
 
@@ -1447,11 +1447,11 @@ library("extrafont")
 library(grDevices)
 library(dplyr)
 
-genus_order <- read.delim('~/Desktop/plot/lasso/genus_no17/selected_genus.txt',
+genus_order <- read.delim(file.path(data_dir, "Desktop", "plot", "lasso", "genus_no17", "selected_genus.txt"),
                           stringsAsFactors = FALSE, check.names = FALSE,
                           header = T, sep = "\t")
 
-selected_g <- read.delim('~/Desktop/plot/lasso/genus_no17/selected_g_ab.txt',
+selected_g <- read.delim(file.path(data_dir, "Desktop", "plot", "lasso", "genus_no17", "selected_g_ab.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,
                          header = T, sep = "\t")
 View(selected_g_order)
@@ -1464,10 +1464,10 @@ selected_g_order <- selected_g1[order(match(selected_g1[, 1],genus_order[,2])), 
 selected_g_o[nrow(selected_g_o) + 1,] <- selected_g[2, ]
 
 
-write.table(selected_g_order, '~/Desktop/plot/lasso/genus_no17/heat.s.g.new.txt', 
+write.table(selected_g_order, file.path(data_dir, "Desktop", "plot", "lasso", "genus_no17", "heat.s.g.new.txt"), 
             sep = '\t', row.names = FALSE, quote = FALSE)
 
-selected_genus <- read.delim('~/Desktop/plot/lasso/genus_no17/heat.s.g.new.txt',
+selected_genus <- read.delim(file.path(data_dir, "Desktop", "plot", "lasso", "genus_no17", "heat.s.g.new.txt"),
                              stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                              header = T, sep = "\t")
 View(selected_genus)
@@ -1489,7 +1489,7 @@ selected_genus <- data.frame(apply(selected_genus, 2, as.numeric))
 View(selected_genus1)
 bk = unique(c(seq(-4,4, length=100)))
 
-write.table(result, '~/Desktop/plot/rda/0309_genus_try.txt', 
+write.table(result, file.path(data_dir, "Desktop", "plot", "rda", "0309_genus_try.txt"), 
             sep = '\t', row.names = FALSE, quote = FALSE)
 library(pheatmap) 
 library("RColorBrewer")
@@ -1507,19 +1507,19 @@ pheatmap(log2(selected_genus1+1), color = colorRampPalette(c("#14A6B1", "white",
          annotation_col = annotation_col,show_colnames = F, show_rownames = T,
          annotation_colors = mycolors,
          cellwidth = 3, cellheight = 6, fontsize = 6,
-filename = '~/Desktop/plot/lasso/genus_no17/selected.genus-1.pdf',
+filename = file.path(data_dir, "Desktop", "plot", "lasso", "genus_no17", "selected.genus-1.pdf"),
 width = 8, height = 16)
 
 
 dev.off()
 
-genus_order <- read.delim('~/Desktop/plot/lasso/genus_no17/selected_genus.txt',
+genus_order <- read.delim(file.path(data_dir, "Desktop", "plot", "lasso", "genus_no17", "selected_genus.txt"),
                           stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,
                           header = T, sep = "\t")
 View(genus_order)
 
 #====barplot for features
-genus_order <- read.delim('~/Desktop/plot/lasso/genus_no17/selected_genus.txt',
+genus_order <- read.delim(file.path(data_dir, "Desktop", "plot", "lasso", "genus_no17", "selected_genus.txt"),
                           stringsAsFactors = FALSE, check.names = FALSE,
                           header = T, sep = "\t")
 
@@ -1548,7 +1548,7 @@ ggdotchart(genus_order, x = "genus", y = "weight",
   theme(axis.text.y = element_blank(),
         axis.ticks.y = element_blank())
 
-ggsave(filename = '~/Desktop/plot/lasso/genus_no17/dotchart.pdf', width = 4, height = 6)             
+ggsave(filename = file.path(data_dir, "Desktop", "plot", "lasso", "genus_no17", "dotchart.pdf"), width = 4, height = 6)             
 
 
 #parsing weights information
@@ -1575,5 +1575,5 @@ ggplot(genus_order, aes(x=genus, y=value, label= paste0(round(relative_we, 2),"%
   theme(axis.ticks=element_blank(), axis.line =element_blank(), axis.text.x = element_blank()) +
   coord_flip()  
 
-ggsave(filename = '~/Desktop/plot/lasso/genus_no17/weight.pdf', width = 4, height = 5)
+ggsave(filename = file.path(data_dir, "Desktop", "plot", "lasso", "genus_no17", "weight.pdf"), width = 4, height = 5)
 ```

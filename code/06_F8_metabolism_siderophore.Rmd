@@ -29,11 +29,11 @@ suppressPackageStartupMessages({
   library(pheatmap)
 })
 
-data <- read.delim('~/Desktop/replot/culture/isolation_culture_metabolite/meta_uniq/meta_uniq.txt',
+data <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "isolation_culture_metabolite", "meta_uniq", "meta_uniq.txt"),
                    stringsAsFactors = FALSE, check.names = FALSE,
                    header = TRUE, sep = "\t")
 
-meta_anno <- read.delim('~/Desktop/replot/culture/isolation_culture_metabolite/meta_uniq/metabolite-metadate.txt',
+meta_anno <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "isolation_culture_metabolite", "meta_uniq", "metabolite-metadate.txt"),
                         stringsAsFactors = FALSE, check.names = FALSE,
                         header = TRUE, sep = "\t")
 
@@ -150,7 +150,7 @@ tt2 <- tt_fix %>%
 
 
 write.table(tt2,
-            file = "~/Desktop/replot/culture/isolation_culture_metabolite/meta_uniq/wt_vs_nc_limma_QCPQN.tsv",
+            file = file.path(data_dir, "Desktop", "replot", "culture", "isolation_culture_metabolite", "meta_uniq", "wt_vs_nc_limma_QCPQN.tsv"),
             sep = "\t", row.names = FALSE, quote = FALSE)
 
 sig <- tt2 %>% filter(padj < 0.05, abs(log2FC) >= 1)
@@ -252,7 +252,7 @@ if (nrow(sig_wt_acid) >= 2) {
     treeheight_col = 0,   # 关掉顶部树状图
     treeheight_row = 0,   # 关掉左侧树状图
     main = "WT vs NC | WT-enriched acid-related metabolites | QC-PQN + limma",
-     filename = "~/Desktop/replot/culture/isolation_culture_metabolite/meta_uniq/wt_vs_nc_wt_enriched_acid_heatmap.pdf",
+     filename = file.path(data_dir, "Desktop", "replot", "culture", "isolation_culture_metabolite", "meta_uniq", "wt_vs_nc_wt_enriched_acid_heatmap.pdf"),
      width = 12, height = 8
   )
 }
@@ -343,10 +343,10 @@ ggplot(comp4, aes(x = "", y = prop, fill = Superclass)) +
 head(comp4)
 
 
-ggsave(filename = '~/Desktop/replot/culture/isolation_culture_metabolite/meta_uniq/wt.enriched.acids.pdf', width = 10, height = 6)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "isolation_culture_metabolite", "meta_uniq", "wt.enriched.acids.pdf"), width = 10, height = 6)
 
 
-data <- read.delim('~/Desktop/replot/culture/isolation_culture_metabolite/meta_uniq/meta_uniq.txt',
+data <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "isolation_culture_metabolite", "meta_uniq", "meta_uniq.txt"),
                    stringsAsFactors = FALSE, check.names = FALSE,
                    header = TRUE, sep = "\t")
 
@@ -397,7 +397,7 @@ ggplot(df_malic, aes(x = Group, y = malic_combined, fill = Group)) +
     legend.position = "none"
   )
 
-ggsave(filename = '~/Desktop/replot/culture/isolation_culture_metabolite/meta_uniq/malic acid.enriched.acids.pdf', width = 3, height = 3)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "isolation_culture_metabolite", "meta_uniq", "malic acid.enriched.acids.pdf"), width = 3, height = 3)
 
 
 ```
@@ -410,10 +410,10 @@ ggsave(filename = '~/Desktop/replot/culture/isolation_culture_metabolite/meta_un
   library(dplyr)      
   library(scales)
   
-  sp_file <- read.delim('~/Desktop/replot/culture/siderophore-experi/data/ms-data/SP.txt',
+  sp_file <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "data", "ms-data", "SP.txt"),
                        stringsAsFactors = FALSE, check.names = FALSE,
                        header = T, sep = "\t")
-  std_file <- read.delim('~/Desktop/replot/culture/siderophore-experi/data/ms-data/STD.txt',
+  std_file <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "data", "ms-data", "STD.txt"),
                        stringsAsFactors = FALSE, check.names = FALSE,
                        header = T, sep = "\t")
   
@@ -472,15 +472,15 @@ ggsave(filename = '~/Desktop/replot/culture/isolation_culture_metabolite/meta_un
        expand = c(0, 0)
      )
    
-   ggsave(filename = "~/Desktop/replot/culture/siderophore-experi/data/time-intensity.pdf", width = 5,height = 4)
+   ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "data", "time-intensity.pdf"), width = 5,height = 4)
    
 
 
    # ms plot #
-   sp_file <- read.delim('~/Desktop/replot/culture/siderophore-experi/data/ms-data/SP_MS.txt',
+   sp_file <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "data", "ms-data", "SP_MS.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,
                          header = T, sep = "\t")
-   std_file <- read.delim('~/Desktop/replot/culture/siderophore-experi/data/ms-data/STD_MS.txt',
+   std_file <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "data", "ms-data", "STD_MS.txt"),
                           stringsAsFactors = FALSE, check.names = FALSE,
                           header = T, sep = "\t")
    
@@ -542,13 +542,13 @@ ggsave(filename = '~/Desktop/replot/culture/isolation_culture_metabolite/meta_un
      ) 
      
    
-   ggsave(filename = "~/Desktop/replot/culture/siderophore-experi/data/mz-intensity.pdf", width = 5,height = 4)
+   ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "data", "mz-intensity.pdf"), width = 5,height = 4)
    
    # MS MS data
-   sp_file <- read.delim('~/Desktop/replot/culture/siderophore-experi/data/ms-data/SP_MSMS.txt',
+   sp_file <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "data", "ms-data", "SP_MSMS.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE,
                          header = T, sep = "\t")
-   std_file <- read.delim('~/Desktop/replot/culture/siderophore-experi/data/ms-data/STD_MSMS.txt',
+   std_file <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "data", "ms-data", "STD_MSMS.txt"),
                           stringsAsFactors = FALSE, check.names = FALSE,
                           header = T, sep = "\t")
    
@@ -605,7 +605,7 @@ ggsave(filename = '~/Desktop/replot/culture/isolation_culture_metabolite/meta_un
        breaks = seq(0, 850, by = 150)
      )
    
-   ggsave(filename = "~/Desktop/replot/culture/siderophore-experi/data/sp-msms-intensity.pdf", width = 7,height = 5) 
+   ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "data", "sp-msms-intensity.pdf"), width = 7,height = 5) 
    
    
    
@@ -662,7 +662,7 @@ ggsave(filename = '~/Desktop/replot/culture/isolation_culture_metabolite/meta_un
        breaks = seq(0, 850, by = 150)
      )
    
-   ggsave(filename = "~/Desktop/replot/culture/siderophore-experi/data/sd-msms-intensity.pdf", width = 7,height = 5) 
+   ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "data", "sd-msms-intensity.pdf"), width = 7,height = 5) 
 ```
 
 ## 6.4 bibC mutant and overexpression strains
@@ -673,7 +673,7 @@ library(ggplot2)
 library(readr)
 library(stringr)
 
-df <- read.delim('~/Desktop/replot/culture/field-experiment/data-plot/culture-4-DFOE.txt',
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "data-plot", "culture-4-DFOE.txt"),
                  stringsAsFactors = FALSE, check.names = FALSE,
                  header = T, sep = "\t")
 
@@ -802,7 +802,7 @@ dodge_w <- 0.72
 
 
 
-ggsave(filename = "~/Desktop/replot/culture/field-experiment/data-plot/4-strains-dfoe-u.pdf", width = 5,height = 3)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "data-plot", "4-strains-dfoe-u.pdf"), width = 5,height = 3)
 
 
 
@@ -1040,16 +1040,16 @@ ph_cols <- c(
 )
 
 res_ph <- run_growth_plot(
-  file_path = "~/Desktop/replot/global_culture/pH.txt",
+  file_path = file.path(data_dir, "Desktop", "replot", "global_culture", "pH.txt"),
   cond_levels = c("6", "7","8", "9", "10"),
   cond_name = "pH",
   cond_label = "pH",
   color_map = ph_cols,
-  out_pdf = "~/Desktop/replot/global_culture/pH_growth_curve_mixed_model.pdf",
+  out_pdf = file.path(data_dir, "Desktop", "replot", "global_culture", "pH_growth_curve_mixed_model.pdf"),
   y_max = 2.2
 )
 
-ggsave(filename = '~/Desktop/replot/global_culture/pH_growth_curve_mixed_model.pdf',width = 5, height = 3)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "global_culture", "pH_growth_curve_mixed_model.pdf"),width = 5, height = 3)
 
 
 ## 2. salinity
@@ -1062,16 +1062,16 @@ salt_cols <- c(
 )
 
 res_salt <- run_growth_plot(
-  file_path = "~/Desktop/replot/global_culture/salinity.txt",
+  file_path = file.path(data_dir, "Desktop", "replot", "global_culture", "salinity.txt"),
   cond_levels = c("0", "1", "3","5"),
   cond_name = "NaCl",
   cond_label = "NaCl (%)",
   color_map = salt_cols,
-  out_pdf = "~/Desktop/replot/global_culture/salinity_growth_curve_mixed_model.pdf",
+  out_pdf = file.path(data_dir, "Desktop", "replot", "global_culture", "salinity_growth_curve_mixed_model.pdf"),
   y_max = 2.5
 )
 
-ggsave(filename = '~/Desktop/replot/global_culture/salinity_growth_curve_mixed_model.pdf',width = 5, height = 3)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "global_culture", "salinity_growth_curve_mixed_model.pdf"),width = 5, height = 3)
 
 
 ## 3. temperature
@@ -1084,16 +1084,16 @@ temp_cols <- c(
 )
 
 res_temp <- run_growth_plot(
-  file_path = "~/Desktop/replot/global_culture/temperature.txt",
+  file_path = file.path(data_dir, "Desktop", "replot", "global_culture", "temperature.txt"),
   cond_levels = c("15", "30","37", "45"),
   cond_name = "Tem",
   cond_label = "Temperature (°C)",
   color_map = temp_cols,
-  out_pdf = "~/Desktop/replot/global_culture/temperature_growth_curve_mixed_model.pdf",
+  out_pdf = file.path(data_dir, "Desktop", "replot", "global_culture", "temperature_growth_curve_mixed_model.pdf"),
   y_max = 2.3
 )
 
-ggsave(filename = '~/Desktop/replot/global_culture/tem_growth_curve_mixed_model.pdf',width = 5, height = 3)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "global_culture", "tem_growth_curve_mixed_model.pdf"),width = 5, height = 3)
 
 
 ## 耐受性CAS 
@@ -1103,7 +1103,7 @@ library(dplyr)
 library(ggplot2)
 
 df <- read.delim(
-  "~/Desktop/replot/global_culture/cas-1.txt",
+  file.path(data_dir, "Desktop", "replot", "global_culture", "cas-1.txt"),
   stringsAsFactors = FALSE,
   check.names = FALSE,
   header = TRUE,
@@ -1207,10 +1207,10 @@ plot_cas_box(
   df_plot,
   yvar = "cas_mean",
   ylab = expression(paste("Siderophore (", mu, "M DFOB eq.)")),
-  outfile = "~/Desktop/replot/global_culture/CAS_raw_uM_boxplot.pdf"
+  outfile = file.path(data_dir, "Desktop", "replot", "global_culture", "CAS_raw_uM_boxplot.pdf")
 )
 
-ggsave(filename = "~/Desktop/replot/global_culture/cas-raw-CFU.pdf",width = 7,height = 3) 
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "global_culture", "cas-raw-CFU.pdf"),width = 7,height = 3) 
 
 
 df_plot_rel <- df_plot %>%
@@ -1222,7 +1222,7 @@ plot_cas_box(
   df_plot_rel,
   yvar = "cas_per_cfu_1e8",
   ylab = expression(paste("Siderophore (", mu, "M / ", 10^8, " CFU)")),
-  outfile = "~/Desktop/replot/global_culture/CAS_per_CFU_boxplot_no_pH10.pdf"
+  outfile = file.path(data_dir, "Desktop", "replot", "global_culture", "CAS_per_CFU_boxplot_no_pH10.pdf")
 )
 
 
@@ -1231,7 +1231,7 @@ library(dplyr)
 library(FSA)
 
 df <- read.delim(
-  "~/Desktop/replot/global_culture/cas-1.txt",
+  file.path(data_dir, "Desktop", "replot", "global_culture", "cas-1.txt"),
   stringsAsFactors = FALSE,
   check.names = FALSE,
   header = TRUE,
@@ -1288,15 +1288,15 @@ print(dunn_raw_sig)
 
 ## 导出
 write.csv(kw_raw,
-          "~/Desktop/replot/global_culture/CAS_raw_KW.csv",
+          file.path(data_dir, "Desktop", "replot", "global_culture", "CAS_raw_KW.csv"),
           row.names = FALSE)
 
 write.csv(dunn_raw,
-          "~/Desktop/replot/global_culture/CAS_raw_Dunn.csv",
+          file.path(data_dir, "Desktop", "replot", "global_culture", "CAS_raw_Dunn.csv"),
           row.names = FALSE)
 
 write.csv(dunn_raw_sig,
-          "~/Desktop/replot/global_culture/CAS_raw_Dunn_sig.csv",
+          file.path(data_dir, "Desktop", "replot", "global_culture", "CAS_raw_Dunn_sig.csv"),
           row.names = FALSE)
 
 
@@ -1337,15 +1337,15 @@ print(dunn_rel_sig)
 
 ## 导出
 write.csv(kw_rel,
-          "~/Desktop/replot/global_culture/CAS_perCFU_KW.csv",
+          file.path(data_dir, "Desktop", "replot", "global_culture", "CAS_perCFU_KW.csv"),
           row.names = FALSE)
 
 write.csv(dunn_rel,
-          "~/Desktop/replot/global_culture/CAS_perCFU_Dunn.csv",
+          file.path(data_dir, "Desktop", "replot", "global_culture", "CAS_perCFU_Dunn.csv"),
           row.names = FALSE)
 
 write.csv(dunn_rel_sig,
-          "~/Desktop/replot/global_culture/CAS_perCFU_Dunn_sig.csv",
+          file.path(data_dir, "Desktop", "replot", "global_culture", "CAS_perCFU_Dunn_sig.csv"),
           row.names = FALSE)
 ```
 
@@ -1363,11 +1363,11 @@ write.csv(dunn_rel_sig,
   # 1. read data
 
   tr <- read.tree(
-    "~/Desktop/replot/culture/field-experiment/16s/metagenome/50-culture/16s-50.culture.nwk"
+    file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "16s", "metagenome", "50-culture", "16s-50.culture.nwk")
   )
   
   dat1 <- read.delim(
-    "~/Desktop/replot/culture/field-experiment/16s/metagenome/50-culture/16s-culture_idlabel.txt",
+    file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "16s", "metagenome", "50-culture", "16s-culture_idlabel.txt"),
     stringsAsFactors = FALSE,
     check.names = FALSE,
     header = TRUE,
@@ -1375,7 +1375,7 @@ write.csv(dunn_rel_sig,
   )
   
   cas_dat <- read.delim(
-    "~/Desktop/replot/culture/field-experiment/16s/metagenome/50-culture/50.cas.txt",
+    file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "16s", "metagenome", "50-culture", "50.cas.txt"),
     stringsAsFactors = FALSE,
     check.names = FALSE,
     header = TRUE,
@@ -1632,7 +1632,7 @@ write.csv(dunn_rel_sig,
 
   
   
-  ggsave(filename = "~/Desktop/replot/culture/siderophore-experi/plot-data/50-tree-cas.pdf", width = 12,height = 12)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "plot-data", "50-tree-cas.pdf"), width = 12,height = 12)
 ```
 
 ## 6.7 Mineral-specific iron release
@@ -1643,7 +1643,7 @@ library(ggplot2)
 library(dplyr)
 library(ggpubr)
 install.packages('ggpmisc')
-df <- read.delim('~/Desktop/replot/culture/siderophore-experi/plot-data/iron-ore.txt',
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "plot-data", "iron-ore.txt"),
                  stringsAsFactors = FALSE, check.names = FALSE,
                  header = TRUE, sep = "\t")
 table(df$group)
@@ -1665,7 +1665,7 @@ ggplot(df, aes(x = con, y = Fe)) +
   )
 
 
-ggsave(filename = '~/Desktop/replot/culture/siderophore-experi/plot-data/iron-ore.pdf',width = 7, height = 5)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "plot-data", "iron-ore.pdf"),width = 7, height = 5)
 
 
 ```
@@ -1676,7 +1676,7 @@ ggsave(filename = '~/Desktop/replot/culture/siderophore-experi/plot-data/iron-or
  library(ggplot2)
  library(dplyr)
   
-  data <- read.delim('~/Desktop/replot/culture/field-experiment/data-plot/5_10_deof_tar.txt',
+  data <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "data-plot", "5_10_deof_tar.txt"),
                      stringsAsFactors = FALSE, check.names = FALSE,
                      header = TRUE, sep = "\t")
   
@@ -1786,7 +1786,7 @@ ggsave(filename = '~/Desktop/replot/culture/siderophore-experi/plot-data/iron-or
   
   p
   
-  ggsave(filename = "~/Desktop/replot/culture/field-experiment/data-plot/wt-5-10-deof.pdf", width = 6,height = 5)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "data-plot", "wt-5-10-deof.pdf"), width = 6,height = 5)
   
 
   library(dplyr)
@@ -1795,12 +1795,12 @@ ggsave(filename = '~/Desktop/replot/culture/siderophore-experi/plot-data/iron-or
   library(emmeans)
   
   data <- read.delim(
-    '~/Desktop/replot/culture/field-experiment/data-plot/ks-3-10.txt',
+    file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "data-plot", "ks-3-10.txt"),
     stringsAsFactors = FALSE, check.names = FALSE,
     header = TRUE, sep = "\t"
   )
   
-  data <- read.delim('~/Desktop/replot/culture/field-experiment/data-plot/5_10_deof_tar.txt',
+  data <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "data-plot", "5_10_deof_tar.txt"),
                      stringsAsFactors = FALSE, check.names = FALSE,
                      header = T, sep = "\t")
   
@@ -1839,7 +1839,7 @@ ggsave(filename = '~/Desktop/replot/culture/siderophore-experi/plot-data/iron-or
 
   
   df <- read.delim(
-    "~/Desktop/replot/culture/All-icp/gradient-lab-plot.txt",
+    file.path(data_dir, "Desktop", "replot", "culture", "All-icp", "gradient-lab-plot.txt"),
     stringsAsFactors = FALSE, check.names = FALSE,
     header = TRUE, sep = "\t"
   )
@@ -1922,7 +1922,7 @@ ggsave(filename = '~/Desktop/replot/culture/siderophore-experi/plot-data/iron-or
   
   
   df <- read.delim(
-    "~/Desktop/replot/culture/All-icp/gradient-lab-plot.txt",
+    file.path(data_dir, "Desktop", "replot", "culture", "All-icp", "gradient-lab-plot.txt"),
     stringsAsFactors = FALSE, check.names = FALSE,
     header = TRUE, sep = "\t"
   )
@@ -1983,9 +1983,9 @@ ggsave(filename = '~/Desktop/replot/culture/siderophore-experi/plot-data/iron-or
       axis.title = element_text(size = 14, color = "black")
     )
   
-  ggsave(filename = "~/Desktop/replot/culture/All-icp/element-5-10-si.pdf", width = 12,height = 5)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "All-icp", "element-5-10-si.pdf"), width = 12,height = 5)
   
-  ggsave(filename = "~/Desktop/replot/culture/All-icp/element-5-10.pdf", width = 7,height = 3)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "All-icp", "element-5-10.pdf"), width = 7,height = 3)
   
   ## change to line plot for Fe and Al
   library(dplyr)
@@ -1993,7 +1993,7 @@ ggsave(filename = '~/Desktop/replot/culture/siderophore-experi/plot-data/iron-or
   library(ggplot2)
   
   df <- read.delim(
-    "~/Desktop/replot/culture/All-icp/gradient-lab-plot.txt",
+    file.path(data_dir, "Desktop", "replot", "culture", "All-icp", "gradient-lab-plot.txt"),
     stringsAsFactors = FALSE, check.names = FALSE,
     header = TRUE, sep = "\t"
   )
@@ -2110,7 +2110,7 @@ ggsave(filename = '~/Desktop/replot/culture/siderophore-experi/plot-data/iron-or
       plot.margin = margin(5, 5, 5, 5)
     )
   
-  ggsave(filename = "~/Desktop/replot/culture/All-icp/element-5-10-1.pdf", width = 7,height = 3)
-  ggsave(filename = "~/Desktop/replot/culture/All-icp/element-5-10-si.pdf", width = 12,height = 5)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "All-icp", "element-5-10-1.pdf"), width = 7,height = 3)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "All-icp", "element-5-10-si.pdf"), width = 12,height = 5)
  
 ```

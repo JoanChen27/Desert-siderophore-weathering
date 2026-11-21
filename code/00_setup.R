@@ -3,6 +3,12 @@
 # Note: packages are also loaded inline within chunks, as in the original
 # draft; this file centralizes the full dependency list for convenience.
 
+# Local data root. Leave DESERT_DATA_DIR unset to use the home directory,
+# so Desktop/ and Documents/ paths resolve exactly as they did before.
+# Set DESERT_DATA_DIR to a directory that contains Desktop/ and Documents/
+# to point every script at a copy of that layout.
+data_dir <- path.expand(Sys.getenv("DESERT_DATA_DIR", unset = "~"))
+
 library(dplyr)
 library(tidyr)
 library(ggplot2)

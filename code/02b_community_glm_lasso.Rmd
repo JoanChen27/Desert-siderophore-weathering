@@ -12,6 +12,7 @@ knitr::opts_chunk$set(
   message = FALSE
 )
 source("00_setup.R")
+# data_dir is defined in 00_setup.R.
 ```
 
 ## 2.7 GLM regression model and visualization

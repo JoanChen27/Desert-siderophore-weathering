@@ -11,7 +11,7 @@
 *.html
 *.pdf
 
-# Data files are not tracked
+# Local analysis tables and R data files are not tracked
 data/
 *.rds
 *.rda

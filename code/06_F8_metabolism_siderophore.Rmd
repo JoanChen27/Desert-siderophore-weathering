@@ -12,7 +12,7 @@ knitr::opts_chunk$set(
   message = FALSE
 )
 source("00_setup.R")
-# data_dir is defined in 00_setup.R.
+# data_dir is set in 00_setup.R.
 ```
 
 # 6. F8 metabolism and siderophore mechanism

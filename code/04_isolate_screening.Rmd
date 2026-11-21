@@ -29,10 +29,10 @@ source("00_setup.R")
 
   # 1. 读树和注释
 
-  tr <- read.tree('~/Desktop/replot/culture/field-experiment/16s/consensus_v2.nwk')
+  tr <- read.tree(file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "16s", "consensus_v2.nwk"))
   
   dat1 <- read.delim(
-    '~/Desktop/replot/culture/field-experiment/16s/consensus_v2_idlabel.txt',
+    file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "16s", "consensus_v2_idlabel.txt"),
     stringsAsFactors = FALSE,
     check.names = FALSE,
     header = TRUE,
@@ -251,7 +251,7 @@ source("00_setup.R")
   p4
   
   
-  ggsave(filename = '~/Desktop/replot/culture/field-experiment/16s/cdhit_16s.tree-update.pdf',width = 10, height = 10)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "16s", "cdhit_16s.tree-update.pdf"),width = 10, height = 10)
   
   #堆叠图展示genus ratio
   
@@ -316,7 +316,7 @@ source("00_setup.R")
   
   
   
-  ggsave(filename = '~/Desktop/replot/culture/field-experiment/16s/genus-ratio.tree-update.pdf',width = 10, height = 10)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "16s", "genus-ratio.tree-update.pdf"),width = 10, height = 10)
   
   
   ## Sand-incubation-panel
@@ -331,17 +331,17 @@ source("00_setup.R")
   # 1. read data
  
   dat2 <- read.delim(
-    "~/Desktop/replot/culture/field-experiment/16s/metagenome/50-culture/50.cas.txt",
+    file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "16s", "metagenome", "50-culture", "50.cas.txt"),
     stringsAsFactors = FALSE,
     check.names = FALSE,
     header = TRUE,
     sep = "\t"
   )
   
-  tr <- read.tree("~/Desktop/replot/culture/field-experiment/16s/metagenome/50-culture/16s-50.culture.nwk")
+  tr <- read.tree(file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "16s", "metagenome", "50-culture", "16s-50.culture.nwk"))
   
   dat1 <- read.delim(
-    "~/Desktop/replot/culture/field-experiment/16s/metagenome/50-culture/16s-culture_idlabel.txt",
+    file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "16s", "metagenome", "50-culture", "16s-culture_idlabel.txt"),
     stringsAsFactors = FALSE,
     check.names = FALSE,
     header = TRUE,
@@ -517,7 +517,7 @@ source("00_setup.R")
   
   p3
   
-  ggsave(filename = '~/Desktop/replot/culture/field-experiment/16s/50.tree-update.pdf',width = 8, height = 8)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "16s", "50.tree-update.pdf"),width = 8, height = 8)
 
 ```
 
@@ -534,7 +534,7 @@ library(readr)
 
 # 读取数据
 df <- read_tsv(
-  "~/Desktop/replot/culture/isolate_MAGs_field/panelA_input.tsv",
+  file.path(data_dir, "Desktop", "replot", "culture", "isolate_MAGs_field", "panelA_input.tsv"),
   show_col_types = FALSE
 )
 
@@ -587,7 +587,7 @@ print(p)
 
 # 保存
 ggsave(
-  "~/Desktop/replot/culture/isolate_MAGs_field/PanelA_ANI_overlap_barplot.pdf",
+  file.path(data_dir, "Desktop", "replot", "culture", "isolate_MAGs_field", "PanelA_ANI_overlap_barplot.pdf"),
   p, width = 6, height = 4.6
 )
 
@@ -602,8 +602,8 @@ library(patchwork)
 
 # File paths
 
-iso_file <- "~/Desktop/replot/culture/isolate_MAGs_field/isolates_genus_count.tsv"
-mag_file <- "~/Desktop/replot/culture/isolate_MAGs_field/fieldMAGs_genus_count.tsv"
+iso_file <- file.path(data_dir, "Desktop", "replot", "culture", "isolate_MAGs_field", "isolates_genus_count.tsv")
+mag_file <- file.path(data_dir, "Desktop", "replot", "culture", "isolate_MAGs_field", "fieldMAGs_genus_count.tsv")
 
 # Common settings
 
@@ -710,7 +710,7 @@ print(p_combined)
 # Save
 
 ggsave(
-  "~/Desktop/replot/culture/isolate_MAGs_field/PanelBC_genus_composition_percent.pdf",
+  file.path(data_dir, "Desktop", "replot", "culture", "isolate_MAGs_field", "PanelBC_genus_composition_percent.pdf"),
   p_combined, width = 12, height = 4
 )
 
@@ -729,7 +729,7 @@ ggsave(
   library(scales)
   
   mydata <- read.delim(
-    '~/Desktop/replot/culture/field-experiment/50-strains/ks.all.plot.txt',
+    file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "50-strains", "ks.all.plot.txt"),
     stringsAsFactors = FALSE, check.names = FALSE,
     header = TRUE, sep = "\t"
   )
@@ -882,7 +882,7 @@ ggsave(
   
   p_box2
   
-  ggsave(filename = "~/Desktop/replot/culture/field-experiment/50-strains/50-ks.boxplot-update.pdf", width = 10,height = 6)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "50-strains", "50-ks.boxplot-update.pdf"), width = 10,height = 6)
   
   plot_df <- stat_res %>%
     mutate(
@@ -910,7 +910,7 @@ ggsave(
   
   p_effect
 
-  ggsave(filename = "~/Desktop/replot/culture/field-experiment/50-strains/50-ks.boxplot-effect.pdf", width = 10,height = 6)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "50-strains", "50-ks.boxplot-effect.pdf"), width = 10,height = 6)
   
     
   p_delta <- ggplot(plot_df, aes(x = group, y = delta_ks, colour = genus_plot)) +

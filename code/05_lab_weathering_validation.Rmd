@@ -25,7 +25,7 @@ source("00_setup.R")
   library(ggplot2)
   library(dplyr)
 
-  data <- read.delim('~/Desktop/replot/culture/field-experiment/data-plot/5_10_deof_tar.txt',
+  data <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "data-plot", "5_10_deof_tar.txt"),
                      stringsAsFactors = FALSE, check.names = FALSE,
                      header = T, sep = "\t")
   data$day <- as.factor(data$day)
@@ -89,7 +89,7 @@ source("00_setup.R")
     )
   
   
-  data <- read.delim('~/Desktop/replot/culture/field-experiment/data-plot/5_10_deof_tar.txt',
+  data <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "data-plot", "5_10_deof_tar.txt"),
                      stringsAsFactors = FALSE, check.names = FALSE,
                      header = T, sep = "\t")
   
@@ -127,10 +127,10 @@ source("00_setup.R")
 library(dplyr)
 library(ggplot2)
 library(ggpubr)
-df <- read.delim('~/Desktop/replot/culture/siderophore-experi/plot-data/No9-volume.txt',
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "plot-data", "No9-volume.txt"),
                  stringsAsFactors = FALSE, check.names = FALSE,
                  header = T, sep = "\t")
-df <- read.delim('~/Desktop/replot/culture/siderophore-experi/plot-data/ct-volume-nc-3.txt',
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "plot-data", "ct-volume-nc-3.txt"),
                  stringsAsFactors = FALSE, check.names = FALSE,
                  header = T, sep = "\t")
 table(df$group)
@@ -209,7 +209,7 @@ ggplot(df_stat, aes(x = mid)) +
 
 
 
-ggsave(filename = '~/Desktop/replot/culture/siderophore-experi/plot-data/ct-nc-3.pdf',width = 6, height = 5)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "plot-data", "ct-nc-3.pdf"),width = 6, height = 5)
 
 
 
@@ -242,7 +242,7 @@ library(ggbeeswarm)
 library(ggplot2)
 
 # load data 
-data <- read.delim('~/Desktop/replot/culture/PMA/lab-dose-c.txt',
+data <- read.delim(file.path(data_dir, "Desktop", "replot", "culture", "PMA", "lab-dose-c.txt"),
                    stringsAsFactors = FALSE, check.names = FALSE,
                    header = TRUE, sep = "\t")
 
@@ -264,8 +264,8 @@ data <- read.delim('~/Desktop/replot/culture/PMA/lab-dose-c.txt',
 
 # 1) Parameters
 
-infile <- "~/Desktop/replot/culture/PMA/lab-dose-c.txt" #f8
-infile <- "~/Desktop/replot/culture/PMA/lab-dose-3.txt" #h12
+infile <- file.path(data_dir, "Desktop", "replot", "culture", "PMA", "lab-dose-c.txt") #f8
+infile <- file.path(data_dir, "Desktop", "replot", "culture", "PMA", "lab-dose-3.txt") #h12
 
 CF <- 0.25             # copies/reaction -> copies/mg sand (2 uL template)
 LOD_rxn <- 1e2         # lowest standard (copies/reaction)
@@ -421,7 +421,7 @@ ggplot(viab_long2, aes(x = day, y = viability, fill = group)) +
   )
 
 
-ggsave(filename = '~/Desktop/replot/culture/PMA/pma.pdf', width = 6, height = 6)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "PMA", "pma.pdf"), width = 6, height = 6)
 
 # nc处理为背景线
  
@@ -511,7 +511,7 @@ ggsave(filename = '~/Desktop/replot/culture/PMA/pma.pdf', width = 6, height = 6)
      legend.position = "none"
    )
  
-  ggsave(filename = "~/Desktop/replot/culture/PMA/wt3-5-10-viability.pdf", width = 4,height = 6)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "PMA", "wt3-5-10-viability.pdf"), width = 4,height = 6)
 
  
  
@@ -609,7 +609,7 @@ ggplot(tot16s_nc, aes(x = day, y = log_total_16s)) +
    theme_bw(base_size = 20) +
    theme(panel.grid.minor = element_blank())
  
-ggsave(filename = "~/Desktop/replot/culture/PMA/nc-background.pdf", width = 3,height = 3)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "PMA", "nc-background.pdf"), width = 3,height = 3)
 
 
  
@@ -679,7 +679,7 @@ ggsave(filename = "~/Desktop/replot/culture/PMA/nc-background.pdf", width = 3,he
      legend.position = "none"
    )
  
-  ggsave(filename = "~/Desktop/replot/culture/PMA/wt3-dose-check.pdf", width = 4,height = 3)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "PMA", "wt3-dose-check.pdf"), width = 4,height = 3)
   
   library(tidyverse)
   library(emmeans)
@@ -719,7 +719,7 @@ ggsave(filename = "~/Desktop/replot/culture/PMA/nc-background.pdf", width = 3,he
 
 ```{r f8-lab-surface-alteration}
 data <- read.delim(
-  "~/Desktop/replot/culture/field-experiment/cq-eds-20260430/120-lab-sem.txt",
+  file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "cq-eds-20260430", "120-lab-sem.txt"),
   stringsAsFactors = FALSE,
   check.names = FALSE,
   header = TRUE,
@@ -907,7 +907,7 @@ library(tidyverse)
 library(rstatix)
 
 data <- read.delim(
-  "~/Desktop/replot/culture/field-experiment/cq-eds-20260430/120-lab-sem.txt",
+  file.path(data_dir, "Desktop", "replot", "culture", "field-experiment", "cq-eds-20260430", "120-lab-sem.txt"),
   stringsAsFactors = FALSE,
   check.names = FALSE,
   header = TRUE,
@@ -1023,7 +1023,7 @@ wilcox_results
   library(patchwork)
   
   mydata <- read.delim(
-    '~/Desktop/replot/culture/siderophore-experi/plot-data/es-ph-wt-5-10.txt',
+    file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "plot-data", "es-ph-wt-5-10.txt"),
     stringsAsFactors = FALSE,
     check.names = FALSE,
     header = TRUE,
@@ -1148,14 +1148,14 @@ wilcox_results
   
   (p1 | p3 | p2 | p4) 
   
-  ggsave(filename = "~/Desktop/replot/culture/siderophore-experi/plot-data/ks_es-all.pdf", width = 12,height = 3)
+  ggsave(filename = file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "plot-data", "ks_es-all.pdf"), width = 12,height = 3)
 
   
   
   library(dplyr)
   
   mydata <- read.delim(
-    '~/Desktop/replot/culture/siderophore-experi/plot-data/es-ph-wt-5-10.txt',
+    file.path(data_dir, "Desktop", "replot", "culture", "siderophore-experi", "plot-data", "es-ph-wt-5-10.txt"),
     stringsAsFactors = FALSE,
     check.names = FALSE,
     header = TRUE,

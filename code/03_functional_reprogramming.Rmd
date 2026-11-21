@@ -20,9 +20,9 @@ source("00_setup.R")
 
 ```{r kegg-temporal-trends}
 # absolute abundance of KEGG
-data <- read.delim("~/Desktop/replot/plot-out/SD-SI-kegg.txt",
+data <- read.delim(file.path(data_dir, "Desktop", "replot", "plot-out", "SD-SI-kegg.txt"),
                      sep = '\t', check.names = FALSE)
-metadata <- read.delim("~/Desktop/replot/plot-out/meta-data.txt",
+metadata <- read.delim(file.path(data_dir, "Desktop", "replot", "plot-out", "meta-data.txt"),
                    sep = '\t', check.names = FALSE)
 
 head(data)
@@ -33,9 +33,9 @@ library(tidyr)
 library(ggplot2)
 
 # 读入
-data <- read.delim("~/Desktop/replot/plot-out/SD-SI-kegg.txt",
+data <- read.delim(file.path(data_dir, "Desktop", "replot", "plot-out", "SD-SI-kegg.txt"),
                    sep = "\t", check.names = FALSE)
-metadata <- read.delim("~/Desktop/replot/plot-out/meta-data.txt",
+metadata <- read.delim(file.path(data_dir, "Desktop", "replot", "plot-out", "meta-data.txt"),
                        sep = "\t", check.names = FALSE)
 
 # 颜色
@@ -110,7 +110,7 @@ sum_name <- dat_long %>%
    theme(axis.text.y = element_text(colour = 'black')) 
 
  
- ggsave("~/Desktop/replot/plot-out/sd-si-kegg-abun.pdf",
+ ggsave(file.path(data_dir, "Desktop", "replot", "plot-out", "sd-si-kegg-abun.pdf"),
          width = 5, height = 4)
 
 ```
@@ -131,11 +131,11 @@ library(patchwork)
 
 # 0) read
 
-df <- read.delim("~/Desktop/replot/plot-out/SD-SI-kegg.txt",
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "plot-out", "SD-SI-kegg.txt"),
                  stringsAsFactors = FALSE,
                  check.names = FALSE,   # 关键
                  header = TRUE, sep = "\t")
-metadata <- read.delim("~/Desktop/replot/plot-out/meta-data.txt",
+metadata <- read.delim(file.path(data_dir, "Desktop", "replot", "plot-out", "meta-data.txt"),
                    sep = '\t', check.names = FALSE)
 
 
@@ -388,7 +388,7 @@ p_name <- ggplot(name_panel_df, aes(x = x, y = y, label = lab)) +
 final_plot <- p_heat + p_name + plot_layout(widths = c(8.6, 2))
 final_plot
 
-ggsave("~/Desktop/replot/plot-out/sd-si-kegg-glm-heat_top4.pdf",
+ggsave(file.path(data_dir, "Desktop", "replot", "plot-out", "sd-si-kegg-glm-heat_top4.pdf"),
        final_plot, width = 8, height = 6)
 ```
 
@@ -626,7 +626,7 @@ maptree_add2_plot = function(x,fillcolor ){
   return(list(p,deg,data_plot,mygraph,fil_colors))
 }
 
-df = read.delim("~/Desktop/replot/metabolic/Map/recal/out/maptree_met_aero.txt",
+df = read.delim(file.path(data_dir, "Desktop", "replot", "metabolic", "Map", "recal", "out", "maptree_met_aero.txt"),
                 sep = '\t',stringsAsFactors = FALSE,header = TRUE,row.names = 1,
                 check.names = FALSE)
 table(df$type)
@@ -657,7 +657,7 @@ mapadd2 = maptree_add2_plot(mapdata,fillcolor = "level")
 p3 = mapadd2[[1]]
 
 p3 + scale_fill_brewer(palette = "Dark2")
-#ggsave(filename = '~/Desktop/replot/metabolic/Map/carbon_out/maptree/calvin.pdf',width = 5,height=5)
+#ggsave(filename = file.path(data_dir, "Desktop", "replot", "metabolic", "Map", "carbon_out", "maptree", "calvin.pdf"),width = 5,height=5)
 ```
 
 ## 3.4 Correlations with physicochemical properties
@@ -668,11 +668,11 @@ library(vegan)
 library(adespatial)
 library(tidyverse)
 
-func <-  read.delim('~/Desktop/replot/ecology/model_env/pathway.txt',
+func <-  read.delim(file.path(data_dir, "Desktop", "replot", "ecology", "model_env", "pathway.txt"),
                        stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                        sep = "\t")
 
-env <- read.delim('~/Desktop/replot/ecology/model_env/eco_stat_cgf.txt',
+env <- read.delim(file.path(data_dir, "Desktop", "replot", "ecology", "model_env", "eco_stat_cgf.txt"),
                   stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                   sep = "\t")
 func <- func[,-c(1)]
@@ -730,11 +730,11 @@ relaimp.df.final = rbind(relaimp.df.final, padjust = p.adjust(relaimp.df.final["
 relaimp.df.fin = t.data.frame(relaimp.df.final)
 relaimp.df.fin = as.data.frame(relaimp.df.fin)
 
-write.table(relaimp.df.fin,"~/Desktop/replot/ecology/model_env/fvarpart_function.txt",
+write.table(relaimp.df.fin,file.path(data_dir, "Desktop", "replot", "ecology", "model_env", "fvarpart_function.txt"),
             sep = '\t', col.names = NA, quote = FALSE)
 
 #plot
-df <- read.delim("~/Desktop/replot/ecology/model_env/fvarpart_function.txt",
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "ecology", "model_env", "fvarpart_function.txt"),
                     sep = '\t',stringsAsFactors = FALSE,header = TRUE,
                     check.names = FALSE)
 df1 <- df[,c(1:10)]
@@ -754,7 +754,7 @@ ggplot() +
   scale_y_discrete(expand = c(0, 0)) +
   labs(y = '', x = '', fill = 'Importance')
 
-# df <- read.delim("~/Desktop/replot/ecology/model_env/fvarpart_function.txt",
+# df <- read.delim(file.path(data_dir, "Desktop", "replot", "ecology", "model_env", "fvarpart_function.txt"),
 #                  sep = '\t',stringsAsFactors = FALSE,header = TRUE,row.names = 1,
 #                  check.names = FALSE)
 # df1 <- df[,c(1:9)]
@@ -778,9 +778,9 @@ pheatmap(as.matrix(df2),color = col,
          show_colnames = T, show_rownames = T,
          cellwidth = 15, cellheight = 10, fontsize = 10,
          width = 15, height = 12,
-      filename = '~/Desktop/replot/ecology/model_env/rnv_path.tiff')
+      filename = file.path(data_dir, "Desktop", "replot", "ecology", "model_env", "rnv_path.tiff"))
 
-df <- read.delim("~/Desktop/replot/ecology/model_env/fvarpart_function.txt",
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "ecology", "model_env", "fvarpart_function.txt"),
                  sep = '\t',stringsAsFactors = FALSE,header = TRUE,
                  check.names = FALSE)
 df$pathway <- factor(df$pathway, levels = rev(c("Carbon",'Nitrogen','Phosphorus','Sulfur','Methane')))
@@ -797,7 +797,7 @@ df$pathway <- factor(df$pathway, levels = rev(c("Carbon",'Nitrogen','Phosphorus'
   
 
 
-ggsave(filename = '~/Desktop/replot/ecology/model_env/improtance.pdf', width = 7, height = 5)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "ecology", "model_env", "improtance.pdf"), width = 7, height = 5)
 ```
 
 ## 3.5 Mediation analysis
@@ -806,10 +806,10 @@ ggsave(filename = '~/Desktop/replot/ecology/model_env/improtance.pdf', width = 7
  library(dplyr)
  library(stringr)
 
- df_meta <- read.delim('~/Desktop/replot/mediation/metadata.txt',
+ df_meta <- read.delim(file.path(data_dir, "Desktop", "replot", "mediation", "metadata.txt"),
                    row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
  
- df_g <- read.delim('~/Desktop/replot/meta/mpa_profile_genus.txt',
+ df_g <- read.delim(file.path(data_dir, "Desktop", "replot", "meta", "mpa_profile_genus.txt"),
                    row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
 
  ## 1) 只选 SI 样本
@@ -948,7 +948,7 @@ ggsave(filename = '~/Desktop/replot/ecology/model_env/improtance.pdf', width = 7
  
  
  # 代谢物
- df_m <- read.delim('~/Desktop/replot/metabo_re/2_28/meta_in_all.txt',
+ df_m <- read.delim(file.path(data_dir, "Desktop", "replot", "metabo_re", "2_28", "meta_in_all.txt"),
                     row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
  
  
@@ -1070,7 +1070,7 @@ ggsave(filename = '~/Desktop/replot/ecology/model_env/improtance.pdf', width = 7
  
  # 终点
  
- df_e <- read.delim('~/Desktop/replot/mediation/endpoints.txt',
+ df_e <- read.delim(file.path(data_dir, "Desktop", "replot", "mediation", "endpoints.txt"),
                      sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
 colnames(df_e) 
 
@@ -1416,8 +1416,8 @@ top10_ks <- res_ks %>% slice_head(n = k)
 # nrow(top10_ks)
 
 #  8) 保存（改文件名即可）
-write.table(res_ks, "~/Desktop/replot/mediation/med_perm_S_P1000.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
-write.table(top10_ks, "~/Desktop/replot/mediation/med_perm_S_top10pct.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+write.table(res_ks, file.path(data_dir, "Desktop", "replot", "mediation", "med_perm_S_P1000.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
+write.table(top10_ks, file.path(data_dir, "Desktop", "replot", "mediation", "med_perm_S_top10pct.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
 
 # quick check
 cat("Ks significant (FDR<0.05):", sum(res_ks$FDR_ind < 0.05), "\n")
@@ -1427,7 +1427,7 @@ cat("Ks significant (FDR<0.05):", sum(res_ks$FDR_ind < 0.05), "\n")
 library(dplyr)
 
 #  mediation 文件夹
-setwd("~/Desktop/replot/mediation")  
+setwd(file.path(data_dir, "Desktop", "replot", "mediation"))  
 
 files <- list.files(pattern="^med_perm_.*_top10pct\\.tsv$")
 
@@ -1452,7 +1452,7 @@ all_topN <- all_top %>%
 # 看看汇总规模
 all_top %>% count(y) %>% arrange(desc(n))
 
-write.table(all_top, '~/Desktop/replot/mediation/all_top_mediation.txt',sep="\t", quote = FALSE)
+write.table(all_top, file.path(data_dir, "Desktop", "replot", "mediation", "all_top_mediation.txt"),sep="\t", quote = FALSE)
 
 library(dplyr)
 
@@ -1529,7 +1529,7 @@ library(ggnewscale)
 
 #  0) load 
 df <- read.delim(
-  "~/Desktop/replot/mediation/all_top_mediation.txt",
+  file.path(data_dir, "Desktop", "replot", "mediation", "all_top_mediation.txt"),
   sep = "\t", header = TRUE,
   stringsAsFactors = FALSE,
   check.names = FALSE
@@ -1819,7 +1819,7 @@ cat("\nAll endpoints (top -> bottom):\n")
 print(endpoint_list)
 
 
-ggsave(filename = '~/Desktop/replot/mediation/mediation.pdf',width = 10, height = 5)
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "mediation", "mediation.pdf"),width = 10, height = 5)
 
 
 # 只展示figure 1中变化的endpoints
@@ -1832,7 +1832,7 @@ library(ggnewscale)
 
 # 0) load 
 df <- read.delim(
-  "~/Desktop/replot/mediation/all_top_mediation.txt",
+  file.path(data_dir, "Desktop", "replot", "mediation", "all_top_mediation.txt"),
   sep = "\t", header = TRUE,
   stringsAsFactors = FALSE,
   check.names = FALSE
@@ -2065,5 +2065,5 @@ cat("\nAll endpoints (top -> bottom):\n")
 print(endpoint_list)
 
 
-#ggsave(filename = '~/Desktop/replot/mediation/mediation.pdf',width = 9, height = 4.5)
+#ggsave(filename = file.path(data_dir, "Desktop", "replot", "mediation", "mediation.pdf"),width = 9, height = 4.5)
 ```

@@ -18,7 +18,7 @@ source("00_setup.R")
 
 ```{r dbrda-variation-partitioning}
 #si
-env <- read.delim('~/Desktop/replot/glm/full_pred_si_glm_update.txt',
+env <- read.delim(file.path(data_dir, "Desktop", "replot", "glm", "full_pred_si_glm_update.txt"),
                   stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                   sep = "\t")
 env <- env[,-c(1:2)]
@@ -28,7 +28,7 @@ tech <- env[,46]
 
 #di
 
-env <- read.delim('~/Desktop/replot/aem/di_env_dbrda_update.txt',
+env <- read.delim(file.path(data_dir, "Desktop", "replot", "aem", "di_env_dbrda_update.txt"),
                   stringsAsFactors = FALSE, check.names = FALSE,header = T,row.names = 1,
                   sep = "\t") 
 env <- env[,-c(1:2)]
@@ -59,11 +59,11 @@ library(vegan)
 library(adespatial)
 
 #metabolite
-species <-  read.delim('~/Desktop/replot/metabolite_ymy/si_metabo.txt',
+species <-  read.delim(file.path(data_dir, "Desktop", "replot", "metabolite_ymy", "si_metabo.txt"),
                        stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                        sep = "\t")
 
-env <- read.delim('~/Desktop/replot/metabolite_ymy/full_pred_si_glm_update.txt',
+env <- read.delim(file.path(data_dir, "Desktop", "replot", "metabolite_ymy", "full_pred_si_glm_update.txt"),
                   stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                   sep = "\t")
 species <- species[,-c(1:3)]
@@ -165,10 +165,10 @@ View(env.dbrda)
 
   adonis.result.db = adonis(rda.data ~., cbind(time.select.db, Env.select.db, tech.select.db), perm = 1999, method = "bray")
   adonis.result.db
-  write.table(adonis.result.db$aov.tab, "~/Desktop/replot/glm/no_ame1/allsamples.adonis.db.update.si.csv", sep = ",", col.names = TRUE, row.names = TRUE, quote = FALSE)
+  write.table(adonis.result.db$aov.tab, file.path(data_dir, "Desktop", "replot", "glm", "no_ame1", "allsamples.adonis.db.update.si.csv"), sep = ",", col.names = TRUE, row.names = TRUE, quote = FALSE)
   
   adonis.crude.result.db = adonis(rda.data ~., cbind(time, Env, tech), perm = 1999, method = "bray")
-  write.table(adonis.crude.result.db$aov.tab, "~/Desktop/replot/glm/allsamples.adonis.crude.db.update.di.1.csv", sep = ",", col.names = TRUE, row.names = TRUE, quote = FALSE)
+  write.table(adonis.crude.result.db$aov.tab, file.path(data_dir, "Desktop", "replot", "glm", "allsamples.adonis.crude.db.update.di.1.csv"), sep = ",", col.names = TRUE, row.names = TRUE, quote = FALSE)
   adonis.crude.result.db
 
   library(Hmisc)
@@ -206,11 +206,11 @@ View(env.dbrda)
   library(vegan)
   
   #si updata with metal
-  species <-  read.delim('~/Desktop/replot/aem/si_genus_100_rda.txt',
+  species <-  read.delim(file.path(data_dir, "Desktop", "replot", "aem", "si_genus_100_rda.txt"),
                          stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                          sep = "\t")
   
-  env <- read.delim('~/Desktop/replot/aem/full_pred_si_genus_rda.txt',
+  env <- read.delim(file.path(data_dir, "Desktop", "replot", "aem", "full_pred_si_genus_rda.txt"),
                     stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                     sep = "\t")
   env <- env[,-c(1:2)]
@@ -267,13 +267,13 @@ View(env.dbrda)
     
 
     
-    write.csv(file = "~/Desktop/replot/glm/fvarpart_v1.csv", x = imp.df.fin)
+    write.csv(file = file.path(data_dir, "Desktop", "replot", "glm", "fvarpart_v1.csv"), x = imp.df.fin)
   
   
     #using calc.relimp from the relaimpo package, no limitation on the number of testing variables imposed
     library(relaimpo)
     
-    env <- read.delim('~/Desktop/replot/aem/full_pred_si_genus_rda.txt',
+    env <- read.delim(file.path(data_dir, "Desktop", "replot", "aem", "full_pred_si_genus_rda.txt"),
                       stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                       sep = "\t")
     env <- env[,c(3:7,9:13,15:22)]
@@ -313,12 +313,12 @@ View(env.dbrda)
     relaimp.df.fin = t.data.frame(relaimp.df.final)
     relaimp.df.fin = as.data.frame(relaimp.df.fin)
     
-    write.table(relaimp.df.fin, '~/Desktop/replot/glm/no_ame1/fvarpart_si.txt',sep="\t", quote = FALSE)
+    write.table(relaimp.df.fin, file.path(data_dir, "Desktop", "replot", "glm", "no_ame1", "fvarpart_si.txt"),sep="\t", quote = FALSE)
 
     relaimp.df.fin_select <- relaimp.df.fin
  
     #updata si
-    mydata <- read.delim('~/Desktop/replot/glm/fvarpart_final_si_update_1.txt',
+    mydata <- read.delim(file.path(data_dir, "Desktop", "replot", "glm", "fvarpart_final_si_update_1.txt"),
                          row.names = 1, sep = '\t',stringsAsFactors = FALSE, check.names = FALSE)
     relaimp.df.fin = mydata[1:562,-c(1:2)]
     mydata <- mydata[1:562,]
@@ -379,7 +379,7 @@ View(env.dbrda)
     View(tern.melt)
     
     #metabolite
-    tern.df <- read.delim('~/Desktop/replot/metabolite_ymy/glm_di.txt',
+    tern.df <- read.delim(file.path(data_dir, "Desktop", "replot", "metabolite_ymy", "glm_di.txt"),
                           row.names = 1, sep = '\t',stringsAsFactors = FALSE, check.names = FALSE)
     table(tern.df$superclass)
     
@@ -473,10 +473,10 @@ View(env.dbrda)
     View(tern.df)
     
     tern.df[,1:5] = apply(tern.df[,1:5], 2, as.numeric)
-    write.table(tern.df, '~/Desktop/replot/glm/glm_si.txt', 
+    write.table(tern.df, file.path(data_dir, "Desktop", "replot", "glm", "glm_si.txt"), 
                 sep = '\t', row.names = T, quote = FALSE)
     
-    tern.df <- read.delim('~/Desktop/replot/glm/glm_si.txt',
+    tern.df <- read.delim(file.path(data_dir, "Desktop", "replot", "glm", "glm_si.txt"),
                          row.names = 1, sep = '\t',stringsAsFactors = FALSE, check.names = FALSE)
     table(tern.df$taxonomy)
     
@@ -517,7 +517,7 @@ View(env.dbrda)
       
     facet_wrap( ~ value,scales="free", ncol=3) 
     
-    ggsave(filename = "~/Desktop/replot/glm/si_all_king.pdf",width = 7,height = 5.5) 
+    ggsave(filename = file.path(data_dir, "Desktop", "replot", "glm", "si_all_king.pdf"),width = 7,height = 5.5) 
     
     #introducing dominating influences
     ggtern(tern.melt,aes(Env,Tem,Tec, size=R2, color=dominating, group=value)) + 
@@ -549,7 +549,7 @@ View(env.dbrda)
    
     #"#738192","#E5BF49","#3AB1A6"
 
-    ggsave(filename = "~/Desktop/replot/glm/tri_si_1.pdf",width = 30,height = 6) 
+    ggsave(filename = file.path(data_dir, "Desktop", "replot", "glm", "tri_si_1.pdf"),width = 30,height = 6) 
     
     # separate as different kingdom
     # archaea
@@ -572,8 +572,8 @@ View(env.dbrda)
   #bacteria  
   df <- subset(tern.melt, value == "Bacteria")
   table(df$dominating)
-  write.table(df, '~/Desktop/replot/glm/bacteria_glm.txt',sep="\t", quote = FALSE)
-  mydata <- read.delim('~/Desktop/replot/glm/bacteria_glm.txt',
+  write.table(df, file.path(data_dir, "Desktop", "replot", "glm", "bacteria_glm.txt"),sep="\t", quote = FALSE)
+  mydata <- read.delim(file.path(data_dir, "Desktop", "replot", "glm", "bacteria_glm.txt"),
                        stringsAsFactors = FALSE, check.names = FALSE,row.names = 1,
                        header = T, sep = "\t")
   table(subset(tern.melt, value == 'Bacteria'&phylum == 'Actinobacteria')$dominating)
@@ -708,7 +708,7 @@ View(env.dbrda)
     
     p1
     
-    ggsave(filename='~/Desktop/replot/glm/aec_si.pdf',width = 7,height = 5)
+    ggsave(filename=file.path(data_dir, "Desktop", "replot", "glm", "aec_si.pdf"),width = 7,height = 5)
     
     library(patchwork)
     p1 + p2 + p3 + p4 + p5 + plot_layout(ncol = 5) 
@@ -726,7 +726,7 @@ View(env.dbrda)
     ### Three groups technical, env, locabehav
     #all.select.db 
     #si
-    species <-  read.delim('~/Desktop/replot/aem/si_genus_100_rda.txt',
+    species <-  read.delim(file.path(data_dir, "Desktop", "replot", "aem", "si_genus_100_rda.txt"),
                            stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                            sep = "\t")
     species <- species[,-c(1:2)]
@@ -734,13 +734,13 @@ View(env.dbrda)
     rda.data = species_hel
     imp.data = rda.data[ , order(colSums(rda.data),decreasing=TRUE)] 
     imp.data = imp.data[, apply(imp.data, 2, function(x){ sum(x>0)>=100})] #occuring in more than 100 samples
-    input <- read.delim('~/Desktop/replot/glm/fvarpart_final_si_update_1.txt',
+    input <- read.delim(file.path(data_dir, "Desktop", "replot", "glm", "fvarpart_final_si_update_1.txt"),
                         stringsAsFactors = FALSE, check.names = FALSE,
                         header = T, sep = "\t") 
-    input <- read.delim('~/Desktop/replot/glm/boots/fvarpart_final_si_update.txt',
+    input <- read.delim(file.path(data_dir, "Desktop", "replot", "glm", "boots", "fvarpart_final_si_update.txt"),
                         stringsAsFactors = FALSE, check.names = FALSE,
                         header = T, sep = "\t") 
-    env <- read.delim('~/Desktop/replot/glm/full_pred_si_glm_update.txt',
+    env <- read.delim(file.path(data_dir, "Desktop", "replot", "glm", "full_pred_si_glm_update.txt"),
                       stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                       sep = "\t")
     all.select.db <- env[,c('AEM1','AEM23','AEM20','AEM2','AEM47','AEM4','Moisture','Mn','Ti','EC','C:P','Ks','C:N','Batch')]
@@ -748,11 +748,11 @@ View(env.dbrda)
     all.select.db <- env[,c('Ks','AEM1','Mn','AEM23','Moisture','Batch','AEM20','Ti','AEM2','EC','AEM47','C:P','AEM4','C:N')]
     
     #di
-    env <- read.delim('~/Desktop/replot/aem/di_env_dbrda_update.txt',
+    env <- read.delim(file.path(data_dir, "Desktop", "replot", "aem", "di_env_dbrda_update.txt"),
                       stringsAsFactors = FALSE, check.names = FALSE,header = T,row.names = 1,
                       sep = "\t")  # all env for forward selection
     all.select.db <- env[,c('AEM50','AEM1','AEM11','AEM4','Median','Moisture','Batch')]
-    species <-  read.delim('~/Desktop/replot/aem/di_genus_aem.txt',
+    species <-  read.delim(file.path(data_dir, "Desktop", "replot", "aem", "di_genus_aem.txt"),
                            stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                            sep = "\t")
     species <- species[,-c(1:2)]
@@ -760,7 +760,7 @@ View(env.dbrda)
     rda.data = species_hel
     imp.data = rda.data[ , order(colSums(rda.data),decreasing=TRUE)] 
     imp.data = imp.data[, apply(imp.data, 2, function(x){ sum(x>0)>=100})] #occuring in more than 100 samples
-    input <- read.delim('~/Desktop/replot/glm/fvarpart_final_di_update_1.txt',
+    input <- read.delim(file.path(data_dir, "Desktop", "replot", "glm", "fvarpart_final_di_update_1.txt"),
                         stringsAsFactors = FALSE, check.names = FALSE,
                         header = T, sep = "\t") 
     
@@ -900,8 +900,8 @@ View(env.dbrda)
                                         onequantile = ecdf_fun(resample.ratio,1) #quantile of probability of env/loc <= 1
       )
     }
-    #saveRDS(object = ratio.master, file = "~/Documents/Revision2/bootstrapping.rds")
-    ratio.master = readRDS(file =  "~/Documents/Revision2/bootstrapping.rds")
+    #saveRDS(object = ratio.master, file = file.path(data_dir, "Documents", "Revision2", "bootstrapping.rds"))
+    ratio.master = readRDS(file =  file.path(data_dir, "Documents", "Revision2", "bootstrapping.rds"))
     
     
     #extracting all information pertaining different group of variables
@@ -952,7 +952,7 @@ View(env.dbrda)
     #relaimp.p = c()
     #relaimp.var.y = c()
     
-    taxinfo = read.csv("~/Documents/Expo_paper/fvarpart_final_v3.csv") #contains phylum info
+    taxinfo = read.csv(file.path(data_dir, "Documents", "Expo_paper", "fvarpart_final_v3.csv")) #contains phylum info
     quantile.df.report = data.frame(name = names(ratio.master),  #for paper tables
                                     Prob_of_spa_dominating = allquantile,
                                     #chance of observing env/loc <= 1 in bootstrapping samples
@@ -976,9 +976,9 @@ View(env.dbrda)
  #   )
     View(quantile.df.report.si)
   #  quantile.df.report$phylum = taxinfo$phylum[match(quantile.df.report$name, taxinfo$X)]
-   # write.csv(file = "~/Desktop/replot/glm/", x = quantile.df.report) #contains all relevant information for confidence interval estimation, dominating influence definition, and ternary plots
+   # write.csv(file = file.path(data_dir, "Desktop", "replot", "glm", ""), x = quantile.df.report) #contains all relevant information for confidence interval estimation, dominating influence definition, and ternary plots
     
-    write.table(quantile.df.report.si, '~/Desktop/replot/glm/boots/quantile.df.report.si_f_tem.txt', 
+    write.table(quantile.df.report.si, file.path(data_dir, "Desktop", "replot", "glm", "boots", "quantile.df.report.si_f_tem.txt"), 
                 sep = '\t', row.names = TRUE, quote = FALSE)
     
     quantile.df = data.frame(name = names(ratio.master), 
@@ -991,15 +991,15 @@ View(env.dbrda)
                              vary = relaimp.var.y)
                         #     taxon = input$tax[match(names(ratio.master),input$X)]
   #  )
-    #saveRDS(quantile.df, file= "~/Documents/Revision2/quantile.df.rds") # simplied format of the quantile.df.report          
- #   taxinfo = read.csv("~/Documents/Expo_paper/fvarpart_final_v3.csv") #contains phylum info
+    #saveRDS(quantile.df, file= file.path(data_dir, "Documents", "Revision2", "quantile.df.rds")) # simplied format of the quantile.df.report          
+ #   taxinfo = read.csv(file.path(data_dir, "Documents", "Expo_paper", "fvarpart_final_v3.csv")) #contains phylum info
   #  quantile.df$phylum = taxinfo$phylum[match(quantile.df$name, taxinfo$X)]
    # quantile.df = quantile.df[order(quantile.df$adjrsq,decreasing =TRUE),]
     #quantile.df.select = quantile.df[1:199,] #taking all significant models
     #View(quantile.df.select)
-    write.table(quantile.df, '~/Desktop/replot/glm/boots/quantile.df.report.si.f.tem.txt', 
+    write.table(quantile.df, file.path(data_dir, "Desktop", "replot", "glm", "boots", "quantile.df.report.si.f.tem.txt"), 
                 sep = '\t', row.names = TRUE, quote = FALSE)
-    quantile.df.select = read.delim("~/Desktop/replot/glm/quantile.df.report.si.1.txt",
+    quantile.df.select = read.delim(file.path(data_dir, "Desktop", "replot", "glm", "quantile.df.report.si.1.txt"),
                        sep = '\t',stringsAsFactors = FALSE,header = TRUE,
                        check.names = FALSE)
     
@@ -1028,7 +1028,7 @@ View(env.dbrda)
     quantile.df.report$taxon = factor(quantile.df.report$taxon, levels = c("bacteria", "fungi", "plant", "animal","Archaea")) #coordinating color
     #original
    
-    quantile.df.report = read.delim("~/Desktop/replot/glm/quantile.df.report.si_f.txt",
+    quantile.df.report = read.delim(file.path(data_dir, "Desktop", "replot", "glm", "quantile.df.report.si_f.txt"),
                                     sep = '\t',stringsAsFactors = FALSE,header = TRUE,row.names = 1,
                                     check.names = FALSE)
     #changing names of columns, only for plotting reasons
@@ -1069,7 +1069,7 @@ View(env.dbrda)
     
     View(quantile.df.report)
     #plotting each domain of life separately for better control
-    quantile.df.report = read.delim("~/Desktop/replot/glm/boots/quantile.df.report.di_f.txt",
+    quantile.df.report = read.delim(file.path(data_dir, "Desktop", "replot", "glm", "boots", "quantile.df.report.di_f.txt"),
                                     sep = '\t',stringsAsFactors = FALSE,header = TRUE,row.names = 1,
                                     check.names = FALSE)
     #preparing dominating variable
@@ -1104,9 +1104,9 @@ View(env.dbrda)
     p1
     #bacteria
     df = subset(tern.melt, Taxonomy == "Bacteria")
-    write.table(df, '~/Desktop/replot/glm/boots/bacteria.df.txt', 
+    write.table(df, file.path(data_dir, "Desktop", "replot", "glm", "boots", "bacteria.df.txt"), 
                 sep = '\t', row.names = TRUE, quote = FALSE)
-    df = read.delim("~/Desktop/replot/glm/boots/bacteria.df.txt",
+    df = read.delim(file.path(data_dir, "Desktop", "replot", "glm", "boots", "bacteria.df.txt"),
                                     sep = '\t',stringsAsFactors = FALSE,header = TRUE,
                                     check.names = FALSE)
     df$type <- c(rep('a',368),rep('b',1),rep('c',1),rep('d',1))
@@ -1145,9 +1145,9 @@ View(env.dbrda)
    #Metazoa
    df = subset(tern.melt, Taxonomy == "Metazoa")
    nrow(df)
-   write.table(df, '~/Desktop/replot/glm/animal.df.txt', 
+   write.table(df, file.path(data_dir, "Desktop", "replot", "glm", "animal.df.txt"), 
                sep = '\t', row.names = TRUE, quote = FALSE)
-   df = read.delim("~/Desktop/replot/glm/animal.df.txt",
+   df = read.delim(file.path(data_dir, "Desktop", "replot", "glm", "animal.df.txt"),
                    sep = '\t',stringsAsFactors = FALSE,header = TRUE,
                    check.names = FALSE)
   p4 <- ggtern(df,aes(Phy_Che,Tem,Tec, size=adjrsq, color=Dominating, group=Taxonomy)) + 
@@ -1205,9 +1205,9 @@ View(env.dbrda)
    p1
    #bacteria
    df = subset(tern.melt, Taxonomy == "Bacteria")
-   write.table(df, '~/Desktop/replot/glm/boots/bacteria.df.txt', 
+   write.table(df, file.path(data_dir, "Desktop", "replot", "glm", "boots", "bacteria.df.txt"), 
                sep = '\t', row.names = TRUE, quote = FALSE)
-   df = read.delim("~/Desktop/replot/glm/boots/bacteria.df.txt",
+   df = read.delim(file.path(data_dir, "Desktop", "replot", "glm", "boots", "bacteria.df.txt"),
                    sep = '\t',stringsAsFactors = FALSE,header = TRUE,
                    check.names = FALSE)
    df$type <- c(rep('a',368),rep('b',1),rep('c',1),rep('d',1))
@@ -1246,9 +1246,9 @@ View(env.dbrda)
    #Metazoa
    df = subset(tern.melt, Taxonomy == "Metazoa")
    nrow(df)
-   write.table(df, '~/Desktop/replot/glm/animal.df.txt', 
+   write.table(df, file.path(data_dir, "Desktop", "replot", "glm", "animal.df.txt"), 
                sep = '\t', row.names = TRUE, quote = FALSE)
-   df = read.delim("~/Desktop/replot/glm/animal.df.txt",
+   df = read.delim(file.path(data_dir, "Desktop", "replot", "glm", "animal.df.txt"),
                    sep = '\t',stringsAsFactors = FALSE,header = TRUE,
                    check.names = FALSE)
    p4 <- ggtern(df,aes(Phy_Che,Tem,Tec, size=adjrsq, color=Dominating, group=Taxonomy)) + 
@@ -1284,7 +1284,7 @@ View(env.dbrda)
    p5
    
    p2
-    ggsave(filename='~/Desktop/replot/glm/boots/acchea_si.pdf',width = 7,height = 5)
+    ggsave(filename=file.path(data_dir, "Desktop", "replot", "glm", "boots", "acchea_si.pdf"),width = 7,height = 5)
     
     library(patchwork)
     p1 + p2 + p3 + p4 + p5 + plot_layout(ncol = 5) 
@@ -1297,9 +1297,9 @@ View(env.dbrda)
 library(gbm)
  library(caret)
  
- otu <- read.table('~/Desktop/replot/restoration_pre/randomforest/genus-sd-si.txt', sep = '\t', header = TRUE, fill = TRUE)
- meta <- read.table('~/Desktop/replot/restoration_pre/randomforest/metabo-sd-si.txt', sep = '\t', header = TRUE, fill = TRUE)
- group <- read.table('~/Desktop/replot/restoration_pre/randomforest/group_cgf.txt', sep = '\t', header = TRUE, fill = TRUE)
+ otu <- read.table(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "genus-sd-si.txt"), sep = '\t', header = TRUE, fill = TRUE)
+ meta <- read.table(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "metabo-sd-si.txt"), sep = '\t', header = TRUE, fill = TRUE)
+ group <- read.table(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "group_cgf.txt"), sep = '\t', header = TRUE, fill = TRUE)
  
  View(otu)
  View(meta)
@@ -1324,12 +1324,12 @@ library(gbm)
  
  otu_meta <- merge(otu_filtered, meta_filtered, id = c('seqid'))
  View(otu_meta)
- write.table(otu_meta,'~/Desktop/replot/restoration_pre/randomforest/genus_meta_si.txt',
+ write.table(otu_meta,file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "genus_meta_si.txt"),
              sep = '\t', col.names = NA, quote = FALSE)
  
  
  # 仅保留bacteria fungi archea
-genus_info <- read.table('~/Desktop/replot/restoration_pre/randomforest/genus-phylum.txt', sep = '\t', header = TRUE, fill = TRUE)
+genus_info <- read.table(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "genus-phylum.txt"), sep = '\t', header = TRUE, fill = TRUE)
  
 library(dplyr)
 
@@ -1475,12 +1475,12 @@ cat("\nDepth=7  RMSE=", round(res7$RMSE,3), " R2=", round(res7$R2,3), "\n")
 print(res7$cor)
 
 # 导出：OOF预测散点数据
-write.table(res7$pred, "~/Desktop/gbm_C_oof_pred_vs_actual_depth7.txt",
+write.table(res7$pred, file.path(data_dir, "Desktop", "gbm_C_oof_pred_vs_actual_depth7.txt"),
             sep="\t", quote=FALSE, row.names=FALSE)
 
 # 导出：top30（按mean_rel_inf排序）+ freq
 top30_7 <- res7$importance_summary %>% slice(1:30)
-write.table(top30_7, "~/Desktop/gbm_C_top30_depth7.txt",
+write.table(top30_7, file.path(data_dir, "Desktop", "gbm_C_top30_depth7.txt"),
             sep="\t", quote=FALSE, row.names=FALSE)
 
 
@@ -1500,10 +1500,10 @@ cat("\nDepth=5  RMSE=", round(res5$RMSE,3), " R2=", round(res5$R2,3), "\n")
 cat("Depth=3  RMSE=", round(res3$RMSE,3), " R2=", round(res3$R2,3), "\n")
 
 # 导出各自top30
-write.table(res5$importance_summary %>% slice(1:30), "~/Desktop/gbm_ks_top30_depth5.txt",
+write.table(res5$importance_summary %>% slice(1:30), file.path(data_dir, "Desktop", "gbm_ks_top30_depth5.txt"),
             sep="\t", quote=FALSE, row.names=FALSE)
 
-write.table(res3$importance_summary %>% slice(1:30), "~/Desktop/replot/restoration_pre/randomforest/gbm_ks_top30_depth3.txt",
+write.table(res3$importance_summary %>% slice(1:30), file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "gbm_ks_top30_depth3.txt"),
             sep="\t", quote=FALSE, row.names=FALSE)
 
 
@@ -1667,28 +1667,28 @@ cat("\n[TOP30 only] RMSE=", round(res_top30$RMSE,3), " R2=", round(res_top30$R2,
 print(res_top30$cor)
 
 # 输出文件：pred_y/test_y（按fold）和OOF整体 
-write.table(res_all$fold_pred,  "~/Desktop/replot/restoration_pre/randomforest/gbm_C_ALL_fold_pred.txt",
+write.table(res_all$fold_pred,  file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "gbm_C_ALL_fold_pred.txt"),
             sep="\t", quote=FALSE, row.names=FALSE)
 
-write.table(res_all$pred_oof,   "~/Desktop/replot/restoration_pre/randomforest/gbm_C_ALL_oof_pred.txt",
+write.table(res_all$pred_oof,   file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "gbm_C_ALL_oof_pred.txt"),
             sep="\t", quote=FALSE, row.names=FALSE)
 
 write.table(res_all$importance_summary %>% slice(1:30),
-            "~/Desktop/replot/restoration_pre/randomforest/gbm_C_ALL_top30_vars.txt",
+            file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "gbm_C_ALL_top30_vars.txt"),
             sep="\t", quote=FALSE, row.names=FALSE)
 
-write.table(res_top30$fold_pred, "~/Desktop/replot/restoration_pre/randomforest/gbm_C_TOP30_fold_pred.txt",
+write.table(res_top30$fold_pred, file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "gbm_C_TOP30_fold_pred.txt"),
             sep="\t", quote=FALSE, row.names=FALSE)
 
-write.table(res_top30$pred_oof,  "~/Desktop/replot/restoration_pre/randomforest/gbm_C_TOP30_oof_pred.txt",
+write.table(res_top30$pred_oof,  file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "gbm_C_TOP30_oof_pred.txt"),
             sep="\t", quote=FALSE, row.names=FALSE)
 
 cat("\nSaved:\n",
-    "  ~/Desktop/gbm_C_ALL_fold_pred.txt\n",
-    "  ~/Desktop/gbm_C_ALL_oof_pred.txt\n",
-    "  ~/Desktop/gbm_C_ALL_top30_vars.txt\n",
-    "  ~/Desktop/gbm_C_TOP30_fold_pred.txt\n",
-    "  ~/Desktop/gbm_C_TOP30_oof_pred.txt\n")
+    paste0("  ", file.path(data_dir, "Desktop", "gbm_C_ALL_fold_pred.txt"), "\n"),
+    paste0("  ", file.path(data_dir, "Desktop", "gbm_C_ALL_oof_pred.txt"), "\n"),
+    paste0("  ", file.path(data_dir, "Desktop", "gbm_C_ALL_top30_vars.txt"), "\n"),
+    paste0("  ", file.path(data_dir, "Desktop", "gbm_C_TOP30_fold_pred.txt"), "\n"),
+    paste0("  ", file.path(data_dir, "Desktop", "gbm_C_TOP30_oof_pred.txt"), "\n"))
 
 
 
@@ -1813,19 +1813,19 @@ cat("\n[NESTED top30] RMSE=", round(res_nested$RMSE,3),
 print(res_nested$cor)
 
 # 导出无偏OOF预测
-write.table(res_nested$pred, "~/Desktop/replot/restoration_pre/randomforest/gbm_ks_NESTED_top20_oof_pred.txt",
+write.table(res_nested$pred, file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "gbm_ks_NESTED_top20_oof_pred.txt"),
             sep="\t", quote=FALSE, row.names=FALSE)
 
 # 导出每个outer fold选到的top30（看稳定性）
 write.table(res_nested$selected_top30_each_outer_fold,
-            "~/Desktop/replot/restoration_pre/randomforest/gbm_ks_NESTED_top20_selected_by_outerfold.txt",
+            file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "gbm_ks_NESTED_top20_selected_by_outerfold.txt"),
             sep="\t", quote=FALSE, row.names=FALSE)
 
 
 
  #可视化
 
-df <- read.delim('~/Desktop/replot/restoration_pre/randomforest/pre_actu_ks_c.txt',
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "pre_actu_ks_c.txt"),
                         stringsAsFactors = FALSE, check.names = FALSE,
                         header = T, sep = "\t")
 
@@ -1949,10 +1949,10 @@ fig
 
 
 
-ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.ks.c-u.pdf",width = 8,height = 3.5) 
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "sd-si_pre_act.ks.c-u.pdf"),width = 8,height = 3.5) 
 
 library(dplyr)
-df <- read.delim('~/Desktop/replot/restoration_pre/randomforest/gbm_C_top30_depth3.txt',
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "gbm_C_top30_depth3.txt"),
                  stringsAsFactors = FALSE, check.names = FALSE,
                  header = T, sep = "\t")
 
@@ -2020,11 +2020,11 @@ ggplot(imp20_plot, aes(x = mean_rel_inf,  y = forcats::fct_rev(var))) +
     axis.text.y = element_text(size = 16, colour = 'black')
   )
 
-ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_top20-c.pdf",width = 8,height = 6) 
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "sd-si_top20-c.pdf"),width = 8,height = 6) 
 
 
 # ks
-df <- read.delim('~/Desktop/replot/restoration_pre/randomforest/gbm_ks_top30_depth3.txt',
+df <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "gbm_ks_top30_depth3.txt"),
                  stringsAsFactors = FALSE, check.names = FALSE,
                  header = T, sep = "\t")
 library(dplyr)
@@ -2185,11 +2185,11 @@ ggplot(imp20_plot, aes(x = mean_rel_inf, y = forcats::fct_rev(var))) +
   )
 
 
-ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_top20-ks.pdf",width = 8,height = 6) 
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "sd-si_top20-ks.pdf"),width = 8,height = 6) 
 
 
 
- df_combin <- read.delim('~/Desktop/replot/restoration_pre/randomforest/combined_y_c-sd-si.txt',row.names = 1,
+ df_combin <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "combined_y_c-sd-si.txt"),row.names = 1,
                          stringsAsFactors = FALSE, check.names = FALSE,
                          header = T, sep = "\t")
  
@@ -2240,8 +2240,8 @@ p2 <- ggplot(df_combin, aes(x = pred_y, y = test_y, color = kind)) +
    theme(legend.position = "none")
  
 p1
-ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.ks.pdf",width = 5,height = 4) 
-ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.c.pdf",width = 5,height = 4) 
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "sd-si_pre_act.ks.pdf"),width = 5,height = 4) 
+ggsave(filename = file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "sd-si_pre_act.c.pdf"),width = 5,height = 4) 
  
  
  ggplot(df_combin, aes(x = pred_y, y = test_y, color = kind)) +
@@ -2286,8 +2286,8 @@ ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.c
    xlab("Predicted carbon (g/kg)") + ylab("Actual carbon (g/kg)") +
    theme_pubr(base_size = 25) + theme(legend.position="none") 
  p1
- ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.ks.pdf",width = 6,height = 5) 
- ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/cgf_inpor_pre_act.ks.re.pdf",width = 5,height = 4) 
+ ggsave(filename = file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "sd-si_pre_act.ks.pdf"),width = 6,height = 5) 
+ ggsave(filename = file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "cgf_inpor_pre_act.ks.re.pdf"),width = 5,height = 4) 
  
  
  df1 <- data.frame(importance_otu_list)
@@ -2312,14 +2312,14 @@ ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.c
  df2_mean <- df2 %>% group_by(var) %>% summarise_all(funs(mean))
  df2_mean <- df2_mean[order(df2_mean$rel.inf, decreasing = TRUE), ]
  df2_mean <- data.frame(df2_mean)
- write.table(df2_mean,'~/Desktop/replot/restoration_pre/randomforest/import.cgf.ks.30.resample.txt',
+ write.table(df2_mean,file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "import.cgf.ks.30.resample.txt"),
              sep = '\t', col.names = NA, quote = FALSE)
  
  
  # top 20 for ks and carbon
- mydata <- read.delim('~/Desktop/replot/restoration_pre/randomforest/impot.20.resample.txt',
+ mydata <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "impot.20.resample.txt"),
                       sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
- mydata <- read.delim('~/Desktop/replot/restoration_pre/randomforest/import.20.ks.resample.txt',
+ mydata <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "import.20.ks.resample.txt"),
                       sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
  View(mydata)
  mydata$Type <- as.factor(mydata$Type)
@@ -2346,13 +2346,13 @@ ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.c
  ) + ylab('Relative influence (%)') + theme_pubr(base_size = 16) + scale_y_continuous(limits = c(0, 15)) + xlab('') +
    coord_flip() + theme(legend.position = "right") 
  
- ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/cgf_inpor_20_c.10.pdf",width = 9,height = 6) 
- ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/cgf_inpor_20_ks.10.pdf",width = 9,height = 6) 
+ ggsave(filename = file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "cgf_inpor_20_c.10.pdf"),width = 9,height = 6) 
+ ggsave(filename = file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "cgf_inpor_20_ks.10.pdf"),width = 9,height = 6) 
  
  #to plot what the variables look like by GLM
- importance_otu.select <- read.delim('~/Desktop/replot/restoration_pre/randomforest/import.cgf.c.top30.resample10.txt',
+ importance_otu.select <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "import.cgf.c.top30.resample10.txt"),
                                      row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
- importance_otu.select <- read.delim('~/Desktop/replot/restoration_pre/randomforest/import.cgf.ks.30.resample.txt',
+ importance_otu.select <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "import.cgf.ks.30.resample.txt"),
                                      row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
  
  otu_id.select <- rownames(importance_otu.select)
@@ -2405,24 +2405,24 @@ ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.c
  table(final_result$padjust < 0.1)
  View(results)
  
- write.table(final_result, '~/Desktop/replot/restoration_pre/randomforest/carbon_variables_glm.txt',sep="\t", col.names = NA,quote = FALSE)
+ write.table(final_result, file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "carbon_variables_glm.txt"),sep="\t", col.names = NA,quote = FALSE)
  
- df1 <- read.delim('~/Desktop/replot/restoration_pre/randomforest/import.cgf.ks.30.resample.txt',
+ df1 <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "import.cgf.ks.30.resample.txt"),
                    row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
- df2 <- read.delim('~/Desktop/replot/restoration_pre/randomforest/ks_variables_glm.txt',
+ df2 <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "ks_variables_glm.txt"),
                    row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
  
- df1 <- read.delim('~/Desktop/replot/restoration_pre/randomforest/import.cgf.c.top30.resample10.txt',
+ df1 <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "import.cgf.c.top30.resample10.txt"),
                    row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
- df2 <- read.delim('~/Desktop/replot/restoration_pre/randomforest/carbon_variables_glm.txt',
+ df2 <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "carbon_variables_glm.txt"),
                    row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
  
  df <- merge(df1, df2, id = c('response_var'))
- write.table(df, '~/Desktop/replot/restoration_pre/randomforest/c_variables_glm_tables.txt',sep="\t", col.names = NA,quote = FALSE)
- # write.table(otu.select,'~/Desktop/replot/restoration_pre/randomforest/import.30.ks.variable.plot.txt',
+ write.table(df, file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "c_variables_glm_tables.txt"),sep="\t", col.names = NA,quote = FALSE)
+ # write.table(otu.select,file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "import.30.ks.variable.plot.txt"),
  #                       sep = '\t', col.names = NA, quote = FALSE)
  # 
- # mydata <- read.delim('~/Desktop/replot/restoration_pre/randomforest/import.30.ks.variable.plot.txt',
+ # mydata <- read.delim(file.path(data_dir, "Desktop", "replot", "restoration_pre", "randomforest", "import.30.ks.variable.plot.txt"),
  #                                     row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
  
  View(otu.select)

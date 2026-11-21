@@ -35,7 +35,7 @@ The underlying datasets are publicly available as described in the manuscript:
 - Raw sequencing reads, metagenome-assembled genomes (MAGs), isolate 16S sequences and genomes: ENA under [PRJEB60065](https://www.ebi.ac.uk/ena/browser/view/PRJEB60065), [PRJEB128436](https://www.ebi.ac.uk/ena/browser/view/PRJEB128436) and [PRJEB128464](https://www.ebi.ac.uk/ena/browser/view/PRJEB128464)
 - LC–MS metabolomics data: MetaboLights under [MTBLS15530](https://www.ebi.ac.uk/metabolights/MTBLS15530)
 
-Local analysis files stay in the usual Desktop and Documents folders. `code/00_setup.R` sets `data_dir` from `DESERT_DATA_DIR`, or from the home directory when that variable is unset, so the scripts resolve paths under `Desktop/` and `Documents/` with no environment variable required. To use a copy of the same layout, set `DESERT_DATA_DIR` to the directory that contains `Desktop/` and `Documents/`.
+Local analysis files stay in the usual Desktop and Documents folders. `code/00_setup.R` sets `data_dir` from `DESERT_DATA_DIR`, or from the home directory when that variable is unset, so the scripts resolve paths under `Desktop/` and `Documents/` without setting an environment variable. To use a copy of the same layout, set `DESERT_DATA_DIR` to the directory that contains `Desktop/` and `Documents/`.
 
 ## Status
 

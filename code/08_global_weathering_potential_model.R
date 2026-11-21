@@ -3,7 +3,7 @@
 # Function-only microbial suitability + V18 fixed-domain substrate scaling and AI+PET climate
 # Evidence score uses two tiers only: 0.5 or 1.0
 
-# Data root shared with code/00_setup.R. Defined here only when that file
+# Data root shared with code/00_setup.R. Set here only when that file
 # has not already been sourced, so this script does not load its full package list.
 if (!exists("data_dir", inherits = TRUE)) {
   data_dir <- path.expand(Sys.getenv("DESERT_DATA_DIR", unset = "~"))

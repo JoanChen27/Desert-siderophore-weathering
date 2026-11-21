@@ -8021,7 +8021,7 @@ p_v18_component_ablation_rank_shift <- ggplot(
 print(p_v18_component_ablation_rank_shift)
 
 ggsave(
-  file.path('/Users/chenqiong/Desktop/replot/global_weathering_input/out-v18', "p_v18_component_ablation_rank_shift.pdf"),
+  file.path('~/Desktop/replot/global_weathering_input/out-v18', "p_v18_component_ablation_rank_shift.pdf"),
   plot = p_v18_component_ablation_rank_shift,
   width = 8,
   height = 5,

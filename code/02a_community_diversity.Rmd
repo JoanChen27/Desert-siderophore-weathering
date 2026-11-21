@@ -962,7 +962,7 @@ result <- data.frame(shannon_index, simpson, richness)
 
 # use alpha diversity as an example
 
- mydata <- read.delim('/Users/chenqiong/Desktop/replot/diversity/alpha/species_alpha.txt',
+ mydata <- read.delim('~/Desktop/replot/diversity/alpha/species_alpha.txt',
                       sep = '\t',stringsAsFactors = FALSE, check.names = FALSE)
  stat_result <- krus_BF(data = mydata, groups = c('Type'), 
                         values = c('Bacteria','Fungi','Archaea','Viridiplantae','Metazoa','Viruses'), p = 0.05)
@@ -983,9 +983,9 @@ result <- data.frame(shannon_index, simpson, richness)
  p1 <- stat_result$plot_g 
  p2 <- stat_result$plot_m 
  
- # ggsave(filename = '/Users/chenqiong/Desktop/replot/figure 1/cgf.nutrient.m4.pdf', width = 32, height = 10)
- # ggsave(filename = '/Users/chenqiong/Desktop/replot/figure 1/see.nutrient.pdf', width = 25, height = 12)
- ggsave(filename = '/Users/chenqiong/Desktop/replot/diversity/alpha/cgf_alpha.pdf', width = 25, height = 10)
+ # ggsave(filename = '~/Desktop/replot/figure 1/cgf.nutrient.m4.pdf', width = 32, height = 10)
+ # ggsave(filename = '~/Desktop/replot/figure 1/see.nutrient.pdf', width = 25, height = 12)
+ ggsave(filename = '~/Desktop/replot/diversity/alpha/cgf_alpha.pdf', width = 25, height = 10)
  
 
 ```
@@ -1026,7 +1026,7 @@ df1 <- subset(df,phylum_a == 'd')
 table(df1$group)
 
 tr <- read.tree('~/Desktop/replot/c_means/species/sp.tar.tree.nwk')
-#dat1 <- read.delim('/Users/chenqiong/Desktop/replot/phylo/idlabel.txt',stringsAsFactors = FALSE, check.names = FALSE,
+#dat1 <- read.delim('~/Desktop/replot/phylo/idlabel.txt',stringsAsFactors = FALSE, check.names = FALSE,
 #                  header = T, sep = "\t")
 #table(dat1['phylum'])
 

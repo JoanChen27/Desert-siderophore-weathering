@@ -18,7 +18,7 @@ source("00_setup.R")
 
 ```{r dbrda-variation-partitioning}
 #si
-env <- read.delim('/Users/chenqiong/Desktop/replot/glm/full_pred_si_glm_update.txt',
+env <- read.delim('~/Desktop/replot/glm/full_pred_si_glm_update.txt',
                   stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                   sep = "\t")
 env <- env[,-c(1:2)]
@@ -28,7 +28,7 @@ tech <- env[,46]
 
 #di
 
-env <- read.delim('/Users/chenqiong/Desktop/replot/aem/di_env_dbrda_update.txt',
+env <- read.delim('~/Desktop/replot/aem/di_env_dbrda_update.txt',
                   stringsAsFactors = FALSE, check.names = FALSE,header = T,row.names = 1,
                   sep = "\t") 
 env <- env[,-c(1:2)]
@@ -59,11 +59,11 @@ library(vegan)
 library(adespatial)
 
 #metabolite
-species <-  read.delim('/Users/chenqiong/Desktop/replot/metabolite_ymy/si_metabo.txt',
+species <-  read.delim('~/Desktop/replot/metabolite_ymy/si_metabo.txt',
                        stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                        sep = "\t")
 
-env <- read.delim('/Users/chenqiong/Desktop/replot/metabolite_ymy/full_pred_si_glm_update.txt',
+env <- read.delim('~/Desktop/replot/metabolite_ymy/full_pred_si_glm_update.txt',
                   stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                   sep = "\t")
 species <- species[,-c(1:3)]
@@ -168,7 +168,7 @@ View(env.dbrda)
   write.table(adonis.result.db$aov.tab, "~/Desktop/replot/glm/no_ame1/allsamples.adonis.db.update.si.csv", sep = ",", col.names = TRUE, row.names = TRUE, quote = FALSE)
   
   adonis.crude.result.db = adonis(rda.data ~., cbind(time, Env, tech), perm = 1999, method = "bray")
-  write.table(adonis.crude.result.db$aov.tab, "/Users/chenqiong/Desktop/replot/glm/allsamples.adonis.crude.db.update.di.1.csv", sep = ",", col.names = TRUE, row.names = TRUE, quote = FALSE)
+  write.table(adonis.crude.result.db$aov.tab, "~/Desktop/replot/glm/allsamples.adonis.crude.db.update.di.1.csv", sep = ",", col.names = TRUE, row.names = TRUE, quote = FALSE)
   adonis.crude.result.db
 
   library(Hmisc)
@@ -206,11 +206,11 @@ View(env.dbrda)
   library(vegan)
   
   #si updata with metal
-  species <-  read.delim('/Users/chenqiong/Desktop/replot/aem/si_genus_100_rda.txt',
+  species <-  read.delim('~/Desktop/replot/aem/si_genus_100_rda.txt',
                          stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                          sep = "\t")
   
-  env <- read.delim('/Users/chenqiong/Desktop/replot/aem/full_pred_si_genus_rda.txt',
+  env <- read.delim('~/Desktop/replot/aem/full_pred_si_genus_rda.txt',
                     stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                     sep = "\t")
   env <- env[,-c(1:2)]
@@ -267,13 +267,13 @@ View(env.dbrda)
     
 
     
-    write.csv(file = "/Users/chenqiong/Desktop/replot/glm/fvarpart_v1.csv", x = imp.df.fin)
+    write.csv(file = "~/Desktop/replot/glm/fvarpart_v1.csv", x = imp.df.fin)
   
   
     #using calc.relimp from the relaimpo package, no limitation on the number of testing variables imposed
     library(relaimpo)
     
-    env <- read.delim('/Users/chenqiong/Desktop/replot/aem/full_pred_si_genus_rda.txt',
+    env <- read.delim('~/Desktop/replot/aem/full_pred_si_genus_rda.txt',
                       stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                       sep = "\t")
     env <- env[,c(3:7,9:13,15:22)]
@@ -318,7 +318,7 @@ View(env.dbrda)
     relaimp.df.fin_select <- relaimp.df.fin
  
     #updata si
-    mydata <- read.delim('/Users/chenqiong/Desktop/replot/glm/fvarpart_final_si_update_1.txt',
+    mydata <- read.delim('~/Desktop/replot/glm/fvarpart_final_si_update_1.txt',
                          row.names = 1, sep = '\t',stringsAsFactors = FALSE, check.names = FALSE)
     relaimp.df.fin = mydata[1:562,-c(1:2)]
     mydata <- mydata[1:562,]
@@ -379,7 +379,7 @@ View(env.dbrda)
     View(tern.melt)
     
     #metabolite
-    tern.df <- read.delim('/Users/chenqiong/Desktop/replot/metabolite_ymy/glm_di.txt',
+    tern.df <- read.delim('~/Desktop/replot/metabolite_ymy/glm_di.txt',
                           row.names = 1, sep = '\t',stringsAsFactors = FALSE, check.names = FALSE)
     table(tern.df$superclass)
     
@@ -473,10 +473,10 @@ View(env.dbrda)
     View(tern.df)
     
     tern.df[,1:5] = apply(tern.df[,1:5], 2, as.numeric)
-    write.table(tern.df, '/Users/chenqiong/Desktop/replot/glm/glm_si.txt', 
+    write.table(tern.df, '~/Desktop/replot/glm/glm_si.txt', 
                 sep = '\t', row.names = T, quote = FALSE)
     
-    tern.df <- read.delim('/Users/chenqiong/Desktop/replot/glm/glm_si.txt',
+    tern.df <- read.delim('~/Desktop/replot/glm/glm_si.txt',
                          row.names = 1, sep = '\t',stringsAsFactors = FALSE, check.names = FALSE)
     table(tern.df$taxonomy)
     
@@ -517,7 +517,7 @@ View(env.dbrda)
       
     facet_wrap( ~ value,scales="free", ncol=3) 
     
-    ggsave(filename = "/Users/chenqiong/Desktop/replot/glm/si_all_king.pdf",width = 7,height = 5.5) 
+    ggsave(filename = "~/Desktop/replot/glm/si_all_king.pdf",width = 7,height = 5.5) 
     
     #introducing dominating influences
     ggtern(tern.melt,aes(Env,Tem,Tec, size=R2, color=dominating, group=value)) + 
@@ -726,7 +726,7 @@ View(env.dbrda)
     ### Three groups technical, env, locabehav
     #all.select.db 
     #si
-    species <-  read.delim('/Users/chenqiong/Desktop/replot/aem/si_genus_100_rda.txt',
+    species <-  read.delim('~/Desktop/replot/aem/si_genus_100_rda.txt',
                            stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                            sep = "\t")
     species <- species[,-c(1:2)]
@@ -740,7 +740,7 @@ View(env.dbrda)
     input <- read.delim('~/Desktop/replot/glm/boots/fvarpart_final_si_update.txt',
                         stringsAsFactors = FALSE, check.names = FALSE,
                         header = T, sep = "\t") 
-    env <- read.delim('/Users/chenqiong/Desktop/replot/glm/full_pred_si_glm_update.txt',
+    env <- read.delim('~/Desktop/replot/glm/full_pred_si_glm_update.txt',
                       stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                       sep = "\t")
     all.select.db <- env[,c('AEM1','AEM23','AEM20','AEM2','AEM47','AEM4','Moisture','Mn','Ti','EC','C:P','Ks','C:N','Batch')]
@@ -748,11 +748,11 @@ View(env.dbrda)
     all.select.db <- env[,c('Ks','AEM1','Mn','AEM23','Moisture','Batch','AEM20','Ti','AEM2','EC','AEM47','C:P','AEM4','C:N')]
     
     #di
-    env <- read.delim('/Users/chenqiong/Desktop/replot/aem/di_env_dbrda_update.txt',
+    env <- read.delim('~/Desktop/replot/aem/di_env_dbrda_update.txt',
                       stringsAsFactors = FALSE, check.names = FALSE,header = T,row.names = 1,
                       sep = "\t")  # all env for forward selection
     all.select.db <- env[,c('AEM50','AEM1','AEM11','AEM4','Median','Moisture','Batch')]
-    species <-  read.delim('/Users/chenqiong/Desktop/replot/aem/di_genus_aem.txt',
+    species <-  read.delim('~/Desktop/replot/aem/di_genus_aem.txt',
                            stringsAsFactors = FALSE, check.names = FALSE, row.names = 1,header = T,
                            sep = "\t")
     species <- species[,-c(1:2)]
@@ -1297,9 +1297,9 @@ View(env.dbrda)
 library(gbm)
  library(caret)
  
- otu <- read.table('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/genus-sd-si.txt', sep = '\t', header = TRUE, fill = TRUE)
- meta <- read.table('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/metabo-sd-si.txt', sep = '\t', header = TRUE, fill = TRUE)
- group <- read.table('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/group_cgf.txt', sep = '\t', header = TRUE, fill = TRUE)
+ otu <- read.table('~/Desktop/replot/restoration_pre/randomforest/genus-sd-si.txt', sep = '\t', header = TRUE, fill = TRUE)
+ meta <- read.table('~/Desktop/replot/restoration_pre/randomforest/metabo-sd-si.txt', sep = '\t', header = TRUE, fill = TRUE)
+ group <- read.table('~/Desktop/replot/restoration_pre/randomforest/group_cgf.txt', sep = '\t', header = TRUE, fill = TRUE)
  
  View(otu)
  View(meta)
@@ -1324,12 +1324,12 @@ library(gbm)
  
  otu_meta <- merge(otu_filtered, meta_filtered, id = c('seqid'))
  View(otu_meta)
- write.table(otu_meta,'/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/genus_meta_si.txt',
+ write.table(otu_meta,'~/Desktop/replot/restoration_pre/randomforest/genus_meta_si.txt',
              sep = '\t', col.names = NA, quote = FALSE)
  
  
  # 仅保留bacteria fungi archea
-genus_info <- read.table('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/genus-phylum.txt', sep = '\t', header = TRUE, fill = TRUE)
+genus_info <- read.table('~/Desktop/replot/restoration_pre/randomforest/genus-phylum.txt', sep = '\t', header = TRUE, fill = TRUE)
  
 library(dplyr)
 
@@ -2317,9 +2317,9 @@ ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.c
  
  
  # top 20 for ks and carbon
- mydata <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/impot.20.resample.txt',
+ mydata <- read.delim('~/Desktop/replot/restoration_pre/randomforest/impot.20.resample.txt',
                       sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
- mydata <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/import.20.ks.resample.txt',
+ mydata <- read.delim('~/Desktop/replot/restoration_pre/randomforest/import.20.ks.resample.txt',
                       sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
  View(mydata)
  mydata$Type <- as.factor(mydata$Type)
@@ -2350,9 +2350,9 @@ ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.c
  ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/cgf_inpor_20_ks.10.pdf",width = 9,height = 6) 
  
  #to plot what the variables look like by GLM
- importance_otu.select <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/import.cgf.c.top30.resample10.txt',
+ importance_otu.select <- read.delim('~/Desktop/replot/restoration_pre/randomforest/import.cgf.c.top30.resample10.txt',
                                      row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
- importance_otu.select <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/import.cgf.ks.30.resample.txt',
+ importance_otu.select <- read.delim('~/Desktop/replot/restoration_pre/randomforest/import.cgf.ks.30.resample.txt',
                                      row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
  
  otu_id.select <- rownames(importance_otu.select)
@@ -2407,14 +2407,14 @@ ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.c
  
  write.table(final_result, '~/Desktop/replot/restoration_pre/randomforest/carbon_variables_glm.txt',sep="\t", col.names = NA,quote = FALSE)
  
- df1 <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/import.cgf.ks.30.resample.txt',
+ df1 <- read.delim('~/Desktop/replot/restoration_pre/randomforest/import.cgf.ks.30.resample.txt',
                    row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
- df2 <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/ks_variables_glm.txt',
+ df2 <- read.delim('~/Desktop/replot/restoration_pre/randomforest/ks_variables_glm.txt',
                    row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
  
- df1 <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/import.cgf.c.top30.resample10.txt',
+ df1 <- read.delim('~/Desktop/replot/restoration_pre/randomforest/import.cgf.c.top30.resample10.txt',
                    row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
- df2 <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/carbon_variables_glm.txt',
+ df2 <- read.delim('~/Desktop/replot/restoration_pre/randomforest/carbon_variables_glm.txt',
                    row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
  
  df <- merge(df1, df2, id = c('response_var'))
@@ -2422,7 +2422,7 @@ ggsave(filename = "~/Desktop/replot/restoration_pre/randomforest/sd-si_pre_act.c
  # write.table(otu.select,'~/Desktop/replot/restoration_pre/randomforest/import.30.ks.variable.plot.txt',
  #                       sep = '\t', col.names = NA, quote = FALSE)
  # 
- # mydata <- read.delim('/Users/chenqiong/Desktop/replot/restoration_pre/randomforest/import.30.ks.variable.plot.txt',
+ # mydata <- read.delim('~/Desktop/replot/restoration_pre/randomforest/import.30.ks.variable.plot.txt',
  #                                     row.names = 1, sep = '\t',header = T,stringsAsFactors = FALSE, check.names = FALSE)
  
  View(otu.select)

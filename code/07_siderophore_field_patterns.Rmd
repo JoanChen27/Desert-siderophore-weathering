@@ -757,7 +757,7 @@ library(broom)
 # 1. Files
 
 setwd(
-  "/Users/chenqiong/Desktop/replot/culture/field-isolation/strain"
+  "~/Desktop/replot/culture/field-isolation/strain"
 )
 
 master_file <- paste0(
